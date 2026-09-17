@@ -481,6 +481,14 @@ document.getElementById('btnLogout').addEventListener('click', async function(){
   location.reload();
 });
 
+function normalizeRuolo(ruoloRaw){
+  var r = String(ruoloRaw||'').toLowerCase().trim().replace(/[\s-]+/g,'_');
+  if(r==='tesoriere_locale') return 'tesoriere_chiesa';
+  if(r==='tesorierecampo') return 'tesoriere_campo';
+  if(r==='tesorierechiesa') return 'tesoriere_chiesa';
+  return r;
+}
+
 async function afterLogin(){
   var { data:{ user } } = await sb.auth.getUser();
   if(!user){ showLogin(); return; }
@@ -495,7 +503,8 @@ async function afterLogin(){
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appShell').style.display='flex';
 
-  if(prof.ruolo==='tesoriere_campo' || prof.ruolo==='admin'){
+  var ruolo = normalizeRuolo(prof.ruolo);
+  if(ruolo==='tesoriere_campo' || ruolo==='admin'){
     var { data: chiese } = await sb.from('chiese').select('id,nome').order('nome');
     chieseDisponibili = chiese || [];
     var sel = document.getElementById('chiesaSelect');
@@ -514,7 +523,8 @@ async function setActiveChiesa(chiesaId){
   if(!chiesaId){ showToast('Nessuna chiesa disponibile.'); return; }
   var { data: chiesa } = await sb.from('chiese').select('*').eq('id', chiesaId).single();
   activeChiesa = chiesa;
-  canWrite = (profile.ruolo==='admin') || (profile.ruolo==='tesoriere_chiesa' && profile.chiesa_id===chiesaId);
+  var ruolo = normalizeRuolo(profile && profile.ruolo);
+  canWrite = (ruolo==='admin') || (ruolo==='tesoriere_chiesa' && String(profile.chiesa_id||'')===String(chiesaId||''));
   document.getElementById('fieldNameLabel').textContent = chiesa ? chiesa.nome : 'Tesoreria';
   document.getElementById('readonlyBadge').style.display = canWrite ? 'none' : 'inline-flex';
   document.querySelectorAll('.btn-primary, .btn-danger').forEach(function(b){
