@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>adsgmdr · Tesoreria</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F7F5EF;
+    --surface:#FFFFFF;
+    --surface-2:#F1EEE4;
+    --ink:#1F2A24;
+    --ink-soft:#5B6259;
+    --rule:#D8D2BE;
+    --rule-strong:#B9B29B;
+    --green:#2F6F4F;
+    --green-dark:#1F4E37;
+    --green-tint:#E6EEE8;
+    --red:#A13D2C;
+    --red-tint:#F5E7E3;
+    --gold:#B8862E;
+    --focus:#2F6F4F;
+    --shadow:none;
+    --radius:5px;
+    --font-ui:'IBM Plex Sans', system-ui, sans-serif;
+    --font-num:'IBM Plex Mono', 'Courier New', monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14181A;
+      --surface:#1B211F;
+      --surface-2:#212823;
+      --ink:#E9E6DC;
+      --ink-soft:#A2AA9F;
+      --rule:#333B34;
+      --rule-strong:#454F45;
+      --green:#5AA980;
+      --green-dark:#3F8264;
+      --green-tint:#1D2B23;
+      --red:#DA7A62;
+      --red-tint:#2E211D;
+      --gold:#D9A94C;
+      --focus:#5AA980;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14181A;
+    --surface:#1B211F;
+    --surface-2:#212823;
+    --ink:#E9E6DC;
+    --ink-soft:#A2AA9F;
+    --rule:#333B34;
+    --rule-strong:#454F45;
+    --green:#5AA980;
+    --green-dark:#3F8264;
+    --green-tint:#1D2B23;
+    --red:#DA7A62;
+    --red-tint:#2E211D;
+    --gold:#D9A94C;
+    --focus:#5AA980;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-ui);
+    font-size:15px;
+    line-height:1.45;
+  }
+  ::selection{ background:var(--green-tint); }
+  button, input, select, textarea{ font-family:inherit; font-size:inherit; color:inherit; }
+  a{ color:var(--green-dark); }
+  h1,h2,h3{ font-weight:600; margin:0 0 4px; letter-spacing:-0.01em; }
+  .num{ font-family:var(--font-num); font-variant-numeric:tabular-nums; }
+
+  /* ---------- App shell ---------- */
+  .app{ display:flex; min-height:100vh; }
+
+  .nav{
+    width:232px;
+    flex:0 0 232px;
+    background:var(--surface);
+    border-right:1px solid var(--rule);
+    display:flex;
+    flex-direction:column;
+    padding:20px 0;
+  }
+  .nav-brand{
+    padding:0 20px 18px;
+    border-bottom:1px solid var(--rule);
+    margin-bottom:10px;
+  }
+  .nav-brand .mark{
+    font-family:var(--font-num);
+    font-weight:700;
+    font-size:20px;
+    letter-spacing:0.02em;
+    color:var(--green-dark);
+  }
+  .nav-brand .sub{ font-size:12px; color:var(--ink-soft); margin-top:2px; }
+  .nav-list{ list-style:none; margin:0; padding:0; flex:1; }
+  .nav-item{
+    display:flex; align-items:center; gap:10px;
+    padding:10px 20px;
+    cursor:pointer;
+    color:var(--ink-soft);
+    border-left:3px solid transparent;
+    font-size:14px;
+  }
+  .nav-item:hover{ background:var(--surface-2); color:var(--ink); }
+  .nav-item.active{
+    color:var(--green-dark);
+    border-left-color:var(--green);
+    background:var(--green-tint);
+    font-weight:600;
+  }
+  .nav-icon{ width:18px; text-align:center; }
+  .nav-foot{ padding:14px 20px 0; font-size:11px; color:var(--ink-soft); border-top:1px solid var(--rule); margin-top:10px; }
+
+  .nav-mobile-toggle{ display:none; }
+
+  .main{ flex:1; min-width:0; display:flex; flex-direction:column; }
+
+  .topbar{
+    display:flex; align-items:center; gap:14px;
+    padding:14px 28px;
+    border-bottom:1px solid var(--rule);
+    background:var(--surface);
+    position:sticky; top:0; z-index:5;
+  }
+  .topbar h1{ font-size:18px; flex:0 0 auto; }
+  .search-wrap{ flex:1; max-width:420px; position:relative; }
+  .search-wrap input{
+    width:100%;
+    padding:8px 12px 8px 30px;
+    border:1px solid var(--rule);
+    border-radius:var(--radius);
+    background:var(--bg);
+    color:var(--ink);
+  }
+  .search-wrap input:focus{ outline:2px solid var(--focus); outline-offset:1px; }
+  .search-wrap .ic{ position:absolute; left:9px; top:50%; transform:translateY(-50%); opacity:.6; font-size:13px; }
+
+  .content{ padding:26px 28px 60px; max-width:1100px; }
+
+  .section{ display:none; }
+  .section.active{ display:block; }
+
+  /* ---------- Cards / dashboard ---------- */
+  .stat-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px; }
+  .stat{
+    background:var(--surface);
+    border:1px solid var(--rule);
+    border-radius:var(--radius);
+    padding:16px 18px;
+  }
+  .stat .label{ font-size:12px; color:var(--ink-soft); margin-bottom:6px; }
+  .stat .value{ font-family:var(--font-num); font-size:23px; font-weight:600; }
+  .stat.risultato-pos .value{ color:var(--green-dark); }
+  .stat.risultato-neg .value{ color:var(--red); }
+
+  .action-row{ display:flex; gap:10px; margin-bottom:26px; flex-wrap:wrap; }
+
+  .btn{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:9px 16px;
+    border-radius:var(--radius);
+    border:1px solid var(--rule-strong);
+    background:var(--surface);
+    color:var(--ink);
+    cursor:pointer;
+    font-weight:500;
+    font-size:14px;
+  }
+  .btn:hover{ background:var(--surface-2); }
+  .btn:focus-visible{ outline:2px solid var(--focus); outline-offset:2px; }
+  .btn-primary{ background:var(--green); border-color:var(--green); color:#fff; }
+  .btn-primary:hover{ background:var(--green-dark); border-color:var(--green-dark); }
+  .btn-danger{ background:var(--red); border-color:var(--red); color:#fff; }
+  .btn-ghost{ border-color:transparent; background:transparent; }
+  .btn-sm{ padding:5px 10px; font-size:12.5px; }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+
+  .panel{
+    background:var(--surface);
+    border:1px solid var(--rule);
+    border-radius:var(--radius);
+    margin-bottom:22px;
+    overflow:hidden;
+  }
+  .panel-head{
+    padding:14px 18px;
+    border-bottom:1px solid var(--rule);
+    display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+  }
+  .panel-head h2{ font-size:15px; }
+  .panel-body{ padding:16px 18px; }
+  .hint{ font-size:12.5px; color:var(--ink-soft); margin-top:4px; }
+
+  /* ---------- Tables ---------- */
+  .table-wrap{ overflow-x:auto; }
+  table{ border-collapse:collapse; width:100%; font-size:13.5px; }
+  th{
+    text-align:left;
+    font-size:11.5px;
+    text-transform:none;
+    color:var(--ink-soft);
+    font-weight:600;
+    padding:8px 10px;
+    border-bottom:1px solid var(--rule-strong);
+    white-space:nowrap;
+  }
+  td{ padding:9px 10px; border-bottom:1px solid var(--rule); white-space:nowrap; }
+  tr:last-child td{ border-bottom:none; }
+  tbody tr:hover{ background:var(--surface-2); }
+  .amt-e{ color:var(--green-dark); }
+  .amt-u{ color:var(--red); }
+  .row-actions{ display:flex; gap:6px; }
+  .empty-row td{ color:var(--ink-soft); text-align:center; padding:28px 10px; white-space:normal; }
+
+  .filters{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .filters select, .filters input{
+    padding:7px 10px; border:1px solid var(--rule); border-radius:var(--radius); background:var(--bg); color:var(--ink);
+  }
+
+  .tag{
+    display:inline-block; padding:2px 8px; border-radius:20px; font-size:11.5px; font-weight:500;
+  }
+  .tag-e{ background:var(--green-tint); color:var(--green-dark); }
+  .tag-u{ background:var(--red-tint); color:var(--red); }
+
+  /* ---------- Forms ---------- */
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:12.5px; color:var(--ink-soft); margin-bottom:5px; }
+  .field input, .field select, .field textarea{
+    width:100%; padding:9px 11px; border:1px solid var(--rule); border-radius:var(--radius);
+    background:var(--bg); color:var(--ink);
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{ outline:2px solid var(--focus); outline-offset:0; }
+  .field-row{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .field-row3{ display:grid; grid-template-columns:2fr 1fr; gap:14px; }
+  textarea{ resize:vertical; min-height:60px; }
+
+  .righe-list{ border:1px solid var(--rule); border-radius:var(--radius); margin-bottom:8px; }
+  .riga{ display:grid; grid-template-columns:1fr 130px 34px; gap:8px; padding:8px; border-bottom:1px solid var(--rule); align-items:center; }
+  .riga:last-child{ border-bottom:none; }
+  .riga input{ padding:7px 9px; border:1px solid var(--rule); border-radius:4px; background:var(--bg); color:var(--ink); }
+  .riga .del{ background:none; border:none; color:var(--red); cursor:pointer; font-size:16px; }
+  .totale-box{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:12px 4px; margin:8px 0 4px; border-top:1px dashed var(--rule-strong);
+    font-size:15px; font-weight:600;
+  }
+
+  /* ---------- Modal ---------- */
+  .modal-backdrop{
+    display:none; position:fixed; inset:0; background:rgba(20,24,20,.45);
+    align-items:flex-start; justify-content:center; padding:40px 16px; overflow-y:auto; z-index:50;
+  }
+  .modal-backdrop.open{ display:flex; }
+  .modal{
+    background:var(--surface); border-radius:8px; width:100%; max-width:560px;
+    border:1px solid var(--rule);
+  }
+  .modal-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 20px; border-bottom:1px solid var(--rule);
+  }
+  .modal-head h3{ font-size:16px; }
+  .modal-close{ background:none; border:none; font-size:18px; cursor:pointer; color:var(--ink-soft); }
+  .modal-body{ padding:20px; max-height:70vh; overflow-y:auto; }
+  .modal-foot{ padding:14px 20px; border-top:1px solid var(--rule); display:flex; justify-content:flex-end; gap:10px; }
+
+  .empty-state{
+    text-align:center; padding:40px 20px; color:var(--ink-soft);
+  }
+  .empty-state .big{ font-size:30px; margin-bottom:8px; }
+
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background:var(--ink); color:var(--bg); padding:10px 18px; border-radius:6px;
+    font-size:13.5px; z-index:80; opacity:0; pointer-events:none; transition:opacity .2s;
+  }
+  .toast.show{ opacity:1; }
+
+  .settings-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px 20px; }
+
+  @media (max-width: 860px){
+    .stat-row{ grid-template-columns:1fr 1fr; }
+    .field-row, .field-row3, .settings-grid{ grid-template-columns:1fr; }
+  }
+
+  @media (max-width: 720px){
+    .nav{
+      position:fixed; z-index:40; left:0; top:0; bottom:0;
+      transform:translateX(-100%); transition:transform .2s;
+    }
+    .nav.open{ transform:translateX(0); box-shadow:0 0 0 2000px rgba(0,0,0,.35); }
+    .nav-mobile-toggle{
+      display:inline-flex; align-items:center; justify-content:center;
+      width:34px; height:34px; border:1px solid var(--rule); border-radius:6px;
+      background:var(--surface); cursor:pointer; flex:0 0 auto;
+    }
+    .content{ padding:18px 16px 60px; }
+    .topbar{ padding:12px 16px; }
+    .search-wrap{ max-width:none; }
+    .stat-row{ grid-template-columns:1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <nav class="nav" id="nav">
+    <div class="nav-brand">
+      <div class="mark">adsgmdr</div>
+      <div class="sub" id="fieldNameLabel">Tesoreria di campo</div>
+    </div>
+    <ul class="nav-list">
+      <li class="nav-item active" data-section="dashboard"><span class="nav-icon">🏠</span> Dashboard</li>
+      <li class="nav-item" data-section="ricevute"><span class="nav-icon">🧾</span> Ricevute</li>
+      <li class="nav-item" data-section="casse"><span class="nav-icon">🏦</span> Casse e depositi</li>
+      <li class="nav-item" data-section="anagrafiche"><span class="nav-icon">👥</span> Anagrafiche</li>
+      <li class="nav-item" data-section="backup"><span class="nav-icon">☁️</span> Dati e backup</li>
+      <li class="nav-item" data-section="impostazioni"><span class="nav-icon">⚙️</span> Impostazioni</li>
+    </ul>
+    <div class="nav-foot">I dati restano su questo dispositivo/browser. Fai un backup regolarmente.</div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <button class="nav-mobile-toggle" id="navToggle" aria-label="Menu">☰</button>
+      <h1 id="topTitle">Dashboard</h1>
+      <div class="search-wrap">
+        <span class="ic">🔍</span>
+        <input type="text" id="globalSearch" placeholder="Cerca ricevute, nomi, casse…">
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- DASHBOARD -->
+      <section class="section active" id="sec-dashboard">
+        <div class="stat-row">
+          <div class="stat">
+            <div class="label">Saldo del campo</div>
+            <div class="value num" id="statSaldo">0,00 €</div>
+          </div>
+          <div class="stat">
+            <div class="label">Entrate (mese)</div>
+            <div class="value num" id="statEntrate">0,00 €</div>
+          </div>
+          <div class="stat">
+            <div class="label">Uscite (mese)</div>
+            <div class="value num" id="statUscite">0,00 €</div>
+          </div>
+          <div class="stat" id="statRisultatoBox">
+            <div class="label">Risultato (mese)</div>
+            <div class="value num" id="statRisultato">0,00 €</div>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button class="btn btn-primary" id="btnNuovaEntrataDash">➕ Nuova entrata</button>
+          <button class="btn btn-danger" id="btnNuovaUscitaDash">➖ Nuova uscita</button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>Ultime ricevute</h2></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Numero</th><th>Data</th><th>Tipo</th><th>Nome</th><th>Cassa</th><th style="text-align:right">Importo</th></tr></thead>
+              <tbody id="dashRicevuteBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- RICEVUTE -->
+      <section class="section" id="sec-ricevute">
+        <div class="action-row">
+          <button class="btn btn-primary" id="btnNuovaEntrata">➕ Nuova entrata</button>
+          <button class="btn btn-danger" id="btnNuovaUscita">➖ Nuova uscita</button>
+        </div>
+        <div class="panel">
+          <div class="panel-body">
+            <div class="filters">
+              <select id="filtTipo">
+                <option value="">Tutte</option>
+                <option value="entrata">Entrate</option>
+                <option value="uscita">Uscite</option>
+              </select>
+              <select id="filtCassa"><option value="">Tutte le casse</option></select>
+              <input type="date" id="filtDal">
+              <input type="date" id="filtAl">
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Numero</th><th>Data</th><th>Tipo</th><th>Nome</th><th>Cassa</th><th>Deposito</th><th style="text-align:right">Importo</th><th></th></tr></thead>
+                <tbody id="ricevuteBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CASSE E DEPOSITI -->
+      <section class="section" id="sec-casse">
+        <div class="panel">
+          <div class="panel-head">
+            <h2>🏛️ Depositi — dove stanno fisicamente i soldi</h2>
+            <button class="btn btn-sm" id="btnNuovoDeposito">+ Nuovo deposito</button>
+          </div>
+          <div class="panel-body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Nome</th><th>Tipo</th><th style="text-align:right">Saldo</th><th></th></tr></thead>
+                <tbody id="depositiBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>💰 Casse — saldo e percentuale alla Conferenza Generale</h2>
+            <button class="btn btn-sm" id="btnNuovaCassa">+ Nuova cassa</button>
+          </div>
+          <div class="panel-body">
+            <p class="hint">Ogni cassa ha una percentuale: la parte che va alla Conferenza Generale. Una cassa allo 0% resta tutta al campo.</p>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Nome</th><th>Nome inglese</th><th>% CG</th><th style="text-align:right">Saldo</th><th></th></tr></thead>
+                <tbody id="casseBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ANAGRAFICHE -->
+      <section class="section" id="sec-anagrafiche">
+        <div class="action-row">
+          <button class="btn btn-primary" id="btnNuovaAnagrafica">➕ Aggiungi un nominativo</button>
+        </div>
+        <div class="panel">
+          <div class="panel-body">
+            <div class="filters">
+              <select id="filtAnagTipo">
+                <option value="">Tutti</option>
+                <option value="membro">Membri</option>
+                <option value="ospite">Ospiti</option>
+                <option value="fornitore">Fornitori</option>
+              </select>
+              <input type="text" id="filtAnagNome" placeholder="Cerca per nome…">
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Nome</th><th>Tipo</th><th>Telefono</th><th>Membro da</th><th>Ricevute</th><th>Totale</th><th></th></tr></thead>
+                <tbody id="anagraficheBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- BACKUP -->
+      <section class="section" id="sec-backup">
+        <div class="panel">
+          <div class="panel-head"><h2>💾 Backup</h2></div>
+          <div class="panel-body">
+            <p class="hint">Salva tutta la contabilità — ricevute, casse, depositi, anagrafiche e impostazioni — in un unico file. Fai un backup almeno una volta al mese.</p>
+            <div class="action-row" style="margin-top:14px;">
+              <button class="btn btn-primary" id="btnSalvaBackup">💾 Salva backup ora</button>
+              <button class="btn" id="btnImportaBackup">📥 Importa backup</button>
+              <input type="file" id="fileImportaBackup" accept="application/json" style="display:none">
+            </div>
+            <p class="hint">L'importazione sostituisce tutti i dati attualmente presenti su questo dispositivo.</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>📊 Esporta ricevute in CSV</h2></div>
+          <div class="panel-body">
+            <p class="hint">Tutte le righe delle ricevute, da aprire con Excel o Numbers.</p>
+            <button class="btn" id="btnEsportaCsv" style="margin-top:10px;">Esporta CSV</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>🧹 Cancella dati</h2></div>
+          <div class="panel-body">
+            <p class="hint">Ogni pulsante chiede conferma. Non si torna indietro: fai prima un backup.</p>
+            <div class="action-row" style="margin-top:10px;">
+              <button class="btn btn-danger btn-sm" id="btnCancellaRicevute">Cancella tutte le ricevute</button>
+              <button class="btn btn-danger btn-sm" id="btnCancellaAnagrafiche">Cancella anagrafiche</button>
+              <button class="btn btn-danger btn-sm" id="btnCancellaTutto">Cancella tutti i dati</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- IMPOSTAZIONI -->
+      <section class="section" id="sec-impostazioni">
+        <div class="panel">
+          <div class="panel-head"><h2>Dati del campo e numerazione</h2></div>
+          <div class="panel-body">
+            <div class="settings-grid">
+              <div class="field"><label>Nome del campo</label><input id="setNomeCampo" type="text"></div>
+              <div class="field"><label>Codice (2 lettere)</label><input id="setCodice" type="text" maxlength="2" style="text-transform:uppercase"></div>
+              <div class="field"><label>Denominazione</label><input id="setDenominazione" type="text"></div>
+              <div class="field"><label>Indirizzo</label><input id="setIndirizzo" type="text"></div>
+              <div class="field"><label>E-mail del campo</label><input id="setEmail" type="email"></div>
+              <div class="field"><label>Tesoriere</label><input id="setTesoriere" type="text"></div>
+              <div class="field"><label>Zeri davanti al numero</label>
+                <select id="setZeri"><option value="2">2 (es. 26CC08E)</option><option value="3">3 (es. 26CC008E)</option><option value="4">4 (es. 26CC0008E)</option></select>
+              </div>
+              <div class="field"><label>Anno contabile in corso</label><input id="setAnno" type="number" disabled></div>
+            </div>
+            <p class="hint">Il numero si compone da: ultime due cifre dell'anno + codice del campo + progressivo + E/U. Esempio: 26CC0008E. Entrate e uscite hanno serie separate e ripartono da 1 il 1° gennaio.</p>
+            <button class="btn btn-primary" id="btnSalvaImpostazioni" style="margin-top:10px;">Salva impostazioni</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- MODAL RICEVUTA -->
+<div class="modal-backdrop" id="modalRicevuta">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="ricevutaTitolo">Nuova entrata</h3>
+      <button class="modal-close" data-close>✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ricevutaId">
+      <input type="hidden" id="ricevutaTipo">
+      <div class="field-row">
+        <div class="field"><label>Data</label><input type="date" id="rData"></div>
+        <div class="field"><label>Numero</label><input type="text" id="rNumero" disabled></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label id="rNomeLabel">Contribuente</label><input type="text" id="rNome" list="anagraficheList" placeholder="Nome e cognome"></div>
+        <div class="field"><label>Cassa</label><select id="rCassa"></select></div>
+      </div>
+      <div class="field">
+        <label>Deposito</label><select id="rDeposito"></select>
+      </div>
+      <datalist id="anagraficheList"></datalist>
+
+      <div class="field">
+        <label>Dettaglio</label>
+        <div class="righe-list" id="righeList"></div>
+        <button class="btn btn-sm" id="btnAggiungiRiga">+ Aggiungi riga</button>
+      </div>
+
+      <div class="totale-box">
+        <span>Totale ricevuta</span>
+        <span class="num" id="rTotale">0,00 €</span>
+      </div>
+
+      <div class="field"><label>Note</label><textarea id="rNote"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger btn-ghost" id="btnEliminaRicevuta" style="margin-right:auto; display:none;">Elimina</button>
+      <button class="btn" data-close>Annulla</button>
+      <button class="btn btn-primary" id="btnConfermaRicevuta">Conferma ricevuta</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CASSA -->
+<div class="modal-backdrop" id="modalCassa">
+  <div class="modal">
+    <div class="modal-head"><h3 id="cassaTitolo">Nuova cassa</h3><button class="modal-close" data-close>✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="cassaId">
+      <div class="field"><label>Nome</label><input type="text" id="cNome"></div>
+      <div class="field"><label>Nome in inglese</label><input type="text" id="cNomeEn"></div>
+      <div class="field"><label>% alla Conferenza Generale</label><input type="number" id="cPerc" min="0" max="100" value="0"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger btn-ghost" id="btnEliminaCassa" style="margin-right:auto; display:none;">Elimina</button>
+      <button class="btn" data-close>Annulla</button>
+      <button class="btn btn-primary" id="btnConfermaCassa">Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DEPOSITO -->
+<div class="modal-backdrop" id="modalDeposito">
+  <div class="modal">
+    <div class="modal-head"><h3 id="depositoTitolo">Nuovo deposito</h3><button class="modal-close" data-close>✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="depositoId">
+      <div class="field"><label>Nome</label><input type="text" id="dNome" placeholder="es. Banca Intesa, Contanti cassaforte"></div>
+      <div class="field"><label>Tipo</label>
+        <select id="dTipo"><option value="banca">Banca</option><option value="contanti">Contanti</option></select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger btn-ghost" id="btnEliminaDeposito" style="margin-right:auto; display:none;">Elimina</button>
+      <button class="btn" data-close>Annulla</button>
+      <button class="btn btn-primary" id="btnConfermaDeposito">Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ANAGRAFICA -->
+<div class="modal-backdrop" id="modalAnagrafica">
+  <div class="modal">
+    <div class="modal-head"><h3 id="anagTitolo">Nuovo nominativo</h3><button class="modal-close" data-close>✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="anagId">
+      <div class="field"><label>Nome e cognome / Ragione sociale</label><input type="text" id="aNome"></div>
+      <div class="field-row">
+        <div class="field"><label>Tipo</label>
+          <select id="aTipo"><option value="membro">Membro</option><option value="ospite">Ospite</option><option value="fornitore">Fornitore</option></select>
+        </div>
+        <div class="field"><label>Telefono</label><input type="text" id="aTelefono"></div>
+      </div>
+      <div class="field"><label>Membro da</label><input type="date" id="aMembroDa"></div>
+      <div class="field"><label>Note</label><textarea id="aNote"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger btn-ghost" id="btnEliminaAnag" style="margin-right:auto; display:none;">Elimina</button>
+      <button class="btn" data-close>Annulla</button>
+      <button class="btn btn-primary" id="btnConfermaAnag">Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL SCHEDA ANAGRAFICA (dettaglio) -->
+<div class="modal-backdrop" id="modalSchedaAnag">
+  <div class="modal">
+    <div class="modal-head"><h3 id="schedaAnagTitolo">Scheda</h3><button class="modal-close" data-close>✕</button></div>
+    <div class="modal-body">
+      <div id="schedaAnagInfo" style="margin-bottom:14px; font-size:14px; color:var(--ink-soft);"></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Numero</th><th>Data</th><th>Tipo</th><th style="text-align:right">Importo</th></tr></thead>
+          <tbody id="schedaAnagBody"></tbody>
+        </table>
+      </div>
+      <div class="totale-box"><span>Totale</span><span class="num" id="schedaAnagTotale">0,00 €</span></div>
+    </div>
+    <div class="modal-foot"><button class="btn" data-close>Chiudi</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- Storage ---------------- */
+  var STORAGE_KEY = "adsgmdr:data:v1";
+
+  function defaultState(){
+    var y = new Date().getFullYear();
+    return {
+      settings:{
+        nomeCampo:"", codice:"CC", denominazione:"", indirizzo:"", email:"", tesoriere:"",
+        zeri:3, annoNumerazione:y, contatoreEntrate:0, contatoreUscite:0
+      },
+      casse:[],
+      depositi:[],
+      ricevute:[],
+      anagrafiche:[]
+    };
+  }
+
+  var state = null;
+  function loadState(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        var parsed = JSON.parse(raw);
+        state = Object.assign(defaultState(), parsed);
+        state.settings = Object.assign(defaultState().settings, parsed.settings || {});
+      } else {
+        state = defaultState();
+      }
+    }catch(e){
+      console.error("Errore lettura dati locali", e);
+      state = defaultState();
+    }
+  }
+  function saveState(){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }catch(e){
+      console.error("Errore salvataggio dati locali", e);
+      showToast("Impossibile salvare i dati sul dispositivo");
+    }
+  }
+
+  /* ---------------- Utils ---------------- */
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+  function todayISO(){ return new Date().toISOString().slice(0,10); }
+  function fmtEUR(n){
+    n = Number(n)||0;
+    return n.toLocaleString('it-IT',{minimumFractionDigits:2, maximumFractionDigits:2}) + " €";
+  }
+  function fmtDate(iso){
+    if(!iso) return "";
+    var p = iso.split("-");
+    if(p.length!==3) return iso;
+    return p[2]+"/"+p[1]+"/"+p[0];
+  }
+  function showToast(msg){
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._h);
+    t._h = setTimeout(function(){ t.classList.remove('show'); }, 2400);
+  }
+  function esc(s){
+    return String(s==null?"":s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  /* ---------------- Numerazione ---------------- */
+  function generaNumero(tipo){
+    var s = state.settings;
+    var y = new Date().getFullYear();
+    if(s.annoNumerazione !== y){
+      s.annoNumerazione = y;
+      s.contatoreEntrate = 0;
+      s.contatoreUscite = 0;
+    }
+    var n;
+    if(tipo === 'entrata'){ s.contatoreEntrate += 1; n = s.contatoreEntrate; }
+    else { s.contatoreUscite += 1; n = s.contatoreUscite; }
+    var yy = String(y).slice(-2);
+    var codice = (s.codice || "CC").toUpperCase();
+    var zeri = Number(s.zeri)||3;
+    var progressivo = String(n).padStart(zeri, '0');
+    var suffisso = tipo === 'entrata' ? 'E' : 'U';
+    return yy + codice + progressivo + suffisso;
+  }
+
+  /* ---------------- Calcoli ---------------- */
+  function saldoCassa(cassaId){
+    var tot = 0;
+    state.ricevute.forEach(function(r){
+      if(r.cassaId === cassaId){
+        tot += (r.tipo === 'entrata' ? 1 : -1) * (Number(r.totale)||0);
+      }
+    });
+    return tot;
+  }
+  function saldoDeposito(depositoId){
+    var tot = 0;
+    state.ricevute.forEach(function(r){
+      if(r.depositoId === depositoId){
+        tot += (r.tipo === 'entrata' ? 1 : -1) * (Number(r.totale)||0);
+      }
+    });
+    return tot;
+  }
+  function saldoCampo(){
+    var tot = 0;
+    state.depositi.forEach(function(d){ tot += saldoDeposito(d.id); });
+    return tot;
+  }
+  function isCurrentMonth(iso){
+    if(!iso) return false;
+    var d = new Date(iso+"T00:00:00");
+    var now = new Date();
+    return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+  }
+
+  /* ---------------- Anagrafiche automatiche ---------------- */
+  function ensureAnagrafica(nome, tipoSuggerito){
+    nome = (nome||"").trim();
+    if(!nome) return null;
+    var found = state.anagrafiche.find(function(a){ return a.nome.toLowerCase() === nome.toLowerCase(); });
+    if(found) return found;
+    var a = { id: uid(), nome: nome, tipo: tipoSuggerito || 'ospite', telefono:"", membroDa:"", note:"" };
+    state.anagrafiche.push(a);
+    return a;
+  }
+
+  /* ---------------- Navigazione ---------------- */
+  var sectionTitles = {
+    dashboard:"Dashboard", ricevute:"Ricevute", casse:"Casse e depositi",
+    anagrafiche:"Anagrafiche", backup:"Dati e backup", impostazioni:"Impostazioni"
+  };
+  function goSection(name){
+    document.querySelectorAll('.section').forEach(function(s){ s.classList.remove('active'); });
+    document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
+    document.getElementById('sec-'+name).classList.add('active');
+    document.querySelector('.nav-item[data-section="'+name+'"]').classList.add('active');
+    document.getElementById('topTitle').textContent = sectionTitles[name];
+    document.getElementById('nav').classList.remove('open');
+    renderSection(name);
+  }
+  document.querySelectorAll('.nav-item').forEach(function(item){
+    item.addEventListener('click', function(){ goSection(item.getAttribute('data-section')); });
+  });
+  document.getElementById('navToggle').addEventListener('click', function(){
+    document.getElementById('nav').classList.toggle('open');
+  });
+
+  function renderSection(name){
+    if(name==='dashboard') renderDashboard();
+    if(name==='ricevute') renderRicevute();
+    if(name==='casse') renderCasse();
+    if(name==='anagrafiche') renderAnagrafiche();
+    if(name==='impostazioni') renderImpostazioni();
+  }
+
+  /* ---------------- Modali generiche ---------------- */
+  function openModal(id){ document.getElementById(id).classList.add('open'); }
+  function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+  document.querySelectorAll('.modal-backdrop').forEach(function(bd){
+    bd.addEventListener('click', function(e){ if(e.target===bd) bd.classList.remove('open'); });
+    bd.querySelectorAll('[data-close]').forEach(function(b){
+      b.addEventListener('click', function(){ bd.classList.remove('open'); });
+    });
+  });
+
+  /* ================= DASHBOARD ================= */
+  function renderDashboard(){
+    document.getElementById('statSaldo').textContent = fmtEUR(saldoCampo());
+    var entrateMese = 0, usciteMese = 0;
+    state.ricevute.forEach(function(r){
+      if(isCurrentMonth(r.data)){
+        if(r.tipo==='entrata') entrateMese += Number(r.totale)||0;
+        else usciteMese += Number(r.totale)||0;
+      }
+    });
+    document.getElementById('statEntrate').textContent = fmtEUR(entrateMese);
+    document.getElementById('statUscite').textContent = fmtEUR(usciteMese);
+    var risultato = entrateMese - usciteMese;
+    var rBox = document.getElementById('statRisultatoBox');
+    rBox.classList.remove('risultato-pos','risultato-neg');
+    rBox.classList.add(risultato>=0 ? 'risultato-pos':'risultato-neg');
+    document.getElementById('statRisultato').textContent = fmtEUR(risultato);
+
+    var body = document.getElementById('dashRicevuteBody');
+    var recenti = state.ricevute.slice().sort(function(a,b){ return (b.data+b.numero).localeCompare(a.data+a.numero); }).slice(0,8);
+    if(recenti.length===0){
+      body.innerHTML = '<tr class="empty-row"><td colspan="6">Nessuna ricevuta ancora. Registra la prima entrata o uscita.</td></tr>';
+    } else {
+      body.innerHTML = recenti.map(function(r){
+        var cassa = state.casse.find(function(c){return c.id===r.cassaId;});
+        return '<tr>'+
+          '<td class="num">'+esc(r.numero)+'</td>'+
+          '<td>'+fmtDate(r.data)+'</td>'+
+          '<td><span class="tag '+(r.tipo==='entrata'?'tag-e':'tag-u')+'">'+(r.tipo==='entrata'?'Entrata':'Uscita')+'</span></td>'+
+          '<td>'+esc(r.nome)+'</td>'+
+          '<td>'+esc(cassa?cassa.nome:"—")+'</td>'+
+          '<td class="num" style="text-align:right" class="'+(r.tipo==='entrata'?'amt-e':'amt-u')+'">'+fmtEUR(r.totale)+'</td>'+
+        '</tr>';
+      }).join('');
+    }
+  }
+
+  /* ================= RICEVUTE ================= */
+  function populateCassaSelects(){
+    var opts = '<option value="">—</option>' + state.casse.map(function(c){ return '<option value="'+c.id+'">'+esc(c.nome)+'</option>'; }).join('');
+    document.getElementById('rCassa').innerHTML = opts;
+    document.getElementById('filtCassa').innerHTML = '<option value="">Tutte le casse</option>' + state.casse.map(function(c){ return '<option value="'+c.id+'">'+esc(c.nome)+'</option>'; }).join('');
+  }
+  function populateDepositoSelect(){
+    document.getElementById('rDeposito').innerHTML = '<option value="">—</option>' + state.depositi.map(function(d){ return '<option value="'+d.id+'">'+esc(d.nome)+'</option>'; }).join('');
+  }
+  function populateAnagraficheDatalist(){
+    document.getElementById('anagraficheList').innerHTML = state.anagrafiche.map(function(a){ return '<option value="'+esc(a.nome)+'">'; }).join('');
+  }
+
+  function renderRicevute(){
+    populateCassaSelects();
+    var tipo = document.getElementById('filtTipo').value;
+    var cassaId = document.getElementById('filtCassa').value;
+    var dal = document.getElementById('filtDal').value;
+    var al = document.getElementById('filtAl').value;
+    var list = state.ricevute.filter(function(r){
+      if(tipo && r.tipo!==tipo) return false;
+      if(cassaId && r.cassaId!==cassaId) return false;
+      if(dal && r.data < dal) return false;
+      if(al && r.data > al) return false;
+      return true;
+    }).sort(function(a,b){ return (b.data+b.numero).localeCompare(a.data+a.numero); });
+
+    var body = document.getElementById('ricevuteBody');
+    if(list.length===0){
+      body.innerHTML = '<tr class="empty-row"><td colspan="8">Nessuna ricevuta trovata.</td></tr>';
+      return;
+    }
+    body.innerHTML = list.map(function(r){
+      var cassa = state.casse.find(function(c){return c.id===r.cassaId;});
+      var deposito = state.depositi.find(function(d){return d.id===r.depositoId;});
+      return '<tr>'+
+        '<td class="num">'+esc(r.numero)+'</td>'+
+        '<td>'+fmtDate(r.data)+'</td>'+
+        '<td><span class="tag '+(r.tipo==='entrata'?'tag-e':'tag-u')+'">'+(r.tipo==='entrata'?'Entrata':'Uscita')+'</span></td>'+
+        '<td>'+esc(r.nome)+'</td>'+
+        '<td>'+esc(cassa?cassa.nome:"—")+'</td>'+
+        '<td>'+esc(deposito?deposito.nome:"—")+'</td>'+
+        '<td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td>'+
+        '<td class="row-actions"><button class="btn btn-sm" data-edit-ricevuta="'+r.id+'">Apri</button></td>'+
+      '</tr>';
+    }).join('');
+    body.querySelectorAll('[data-edit-ricevuta]').forEach(function(btn){
+      btn.addEventListener('click', function(){ apriRicevuta(btn.getAttribute('data-edit-ricevuta')); });
+    });
+  }
+  ['filtTipo','filtCassa','filtDal','filtAl'].forEach(function(id){
+    document.getElementById(id).addEventListener('input', renderRicevute);
+    document.getElementById(id).addEventListener('change', renderRicevute);
+  });
+
+  var righeCounter = 0;
+  function nuovaRigaHTML(desc, importo){
+    righeCounter++;
+    var rid = 'riga'+righeCounter;
+    return '<div class="riga" data-riga-id="'+rid+'">'+
+      '<input type="text" class="riga-desc" placeholder="Descrizione" value="'+esc(desc||"")+'">'+
+      '<input type="number" step="0.01" class="riga-importo" placeholder="0,00" value="'+(importo!=null?importo:"")+'">'+
+      '<button class="del" title="Rimuovi">✕</button>'+
+    '</div>';
+  }
+  function addRigaRow(desc, importo){
+    var wrap = document.getElementById('righeList');
+    var div = document.createElement('div');
+    div.innerHTML = nuovaRigaHTML(desc, importo);
+    var node = div.firstChild;
+    wrap.appendChild(node);
+    node.querySelector('.del').addEventListener('click', function(){ node.remove(); ricalcolaTotale(); });
+    node.querySelector('.riga-importo').addEventListener('input', ricalcolaTotale);
+    return node;
+  }
+  function ricalcolaTotale(){
+    var tot = 0;
+    document.querySelectorAll('#righeList .riga-importo').forEach(function(inp){ tot += Number(inp.value)||0; });
+    document.getElementById('rTotale').textContent = fmtEUR(tot);
+    return tot;
+  }
+  document.getElementById('btnAggiungiRiga').addEventListener('click', function(){ addRigaRow('', ''); });
+
+  function apriModaleRicevuta(tipo, existing){
+    populateCassaSelects();
+    populateDepositoSelect();
+    populateAnagraficheDatalist();
+    document.getElementById('righeList').innerHTML = '';
+    document.getElementById('ricevutaTipo').value = tipo;
+    document.getElementById('ricevutaTitolo').textContent = existing ? ('Ricevuta '+existing.numero) : (tipo==='entrata' ? 'Nuova entrata':'Nuova uscita');
+    document.getElementById('rNomeLabel').textContent = tipo==='entrata' ? 'Contribuente' : 'Fornitore';
+    document.getElementById('btnEliminaRicevuta').style.display = existing ? 'inline-flex' : 'none';
+
+    if(existing){
+      document.getElementById('ricevutaId').value = existing.id;
+      document.getElementById('rData').value = existing.data;
+      document.getElementById('rNumero').value = existing.numero;
+      document.getElementById('rNome').value = existing.nome;
+      document.getElementById('rCassa').value = existing.cassaId || '';
+      document.getElementById('rDeposito').value = existing.depositoId || '';
+      document.getElementById('rNote').value = existing.note || '';
+      (existing.righe||[]).forEach(function(rg){ addRigaRow(rg.descrizione, rg.importo); });
+      if((existing.righe||[]).length===0) addRigaRow('', existing.totale);
+    } else {
+      document.getElementById('ricevutaId').value = '';
+      document.getElementById('rData').value = todayISO();
+      document.getElementById('rNumero').value = '(automatico)';
+      document.getElementById('rNome').value = '';
+      document.getElementById('rCassa').value = '';
+      document.getElementById('rDeposito').value = '';
+      document.getElementById('rNote').value = '';
+      addRigaRow('', '');
+    }
+    ricalcolaTotale();
+    openModal('modalRicevuta');
+  }
+  function apriRicevuta(id){
+    var r = state.ricevute.find(function(x){ return x.id===id; });
+    if(r) apriModaleRicevuta(r.tipo, r);
+  }
+  document.getElementById('btnNuovaEntrata').addEventListener('click', function(){ apriModaleRicevuta('entrata', null); });
+  document.getElementById('btnNuovaUscita').addEventListener('click', function(){ apriModaleRicevuta('uscita', null); });
+  document.getElementById('btnNuovaEntrataDash').addEventListener('click', function(){ apriModaleRicevuta('entrata', null); });
+  document.getElementById('btnNuovaUscitaDash').addEventListener('click', function(){ apriModaleRicevuta('uscita', null); });
+
+  document.getElementById('btnConfermaRicevuta').addEventListener('click', function(){
+    var tipo = document.getElementById('ricevutaTipo').value;
+    var id = document.getElementById('ricevutaId').value;
+    var nome = document.getElementById('rNome').value.trim();
+    var data = document.getElementById('rData').value || todayISO();
+    var cassaId = document.getElementById('rCassa').value;
+    var depositoId = document.getElementById('rDeposito').value;
+    var note = document.getElementById('rNote').value;
+
+    if(!nome){ showToast('Inserisci un nome'); return; }
+    if(!depositoId){ showToast('Seleziona un deposito'); return; }
+
+    var righe = [];
+    document.querySelectorAll('#righeList .riga').forEach(function(row){
+      var desc = row.querySelector('.riga-desc').value.trim();
+      var imp = Number(row.querySelector('.riga-importo').value)||0;
+      if(desc || imp) righe.push({descrizione:desc, importo:imp});
+    });
+    var totale = righe.reduce(function(s,r){ return s + (Number(r.importo)||0); }, 0);
+    if(totale<=0){ showToast('Il totale deve essere maggiore di zero'); return; }
+
+    if(id){
+      var r = state.ricevute.find(function(x){ return x.id===id; });
+      r.data=data; r.nome=nome; r.cassaId=cassaId; r.depositoId=depositoId; r.righe=righe; r.totale=totale; r.note=note;
+    } else {
+      var numero = generaNumero(tipo);
+      state.ricevute.push({
+        id: uid(), numero: numero, tipo: tipo, data: data, nome: nome,
+        cassaId: cassaId, depositoId: depositoId, righe: righe, totale: totale, note: note
+      });
+      ensureAnagrafica(nome, tipo==='entrata' ? 'ospite' : 'fornitore');
+    }
+    saveState();
+    closeModal('modalRicevuta');
+    renderRicevute(); renderDashboard();
+    showToast('Ricevuta salvata');
+  });
+  document.getElementById('btnEliminaRicevuta').addEventListener('click', function(){
+    var id = document.getElementById('ricevutaId').value;
+    if(!id) return;
+    if(!confirm('Eliminare questa ricevuta? L\'operazione non si può annullare.')) return;
+    state.ricevute = state.ricevute.filter(function(r){ return r.id!==id; });
+    saveState();
+    closeModal('modalRicevuta');
+    renderRicevute(); renderDashboard();
+    showToast('Ricevuta eliminata');
+  });
+
+  /* ================= CASSE E DEPOSITI ================= */
+  function renderCasse(){
+    var cBody = document.getElementById('casseBody');
+    if(state.casse.length===0){
+      cBody.innerHTML = '<tr class="empty-row"><td colspan="5">Nessuna cassa. Aggiungine una per iniziare.</td></tr>';
+    } else {
+      cBody.innerHTML = state.casse.map(function(c){
+        return '<tr>'+
+          '<td>'+esc(c.nome)+'</td>'+
+          '<td>'+esc(c.nomeEn||"—")+'</td>'+
+          '<td>'+ (Number(c.percentuale)||0) +'%</td>'+
+          '<td class="num" style="text-align:right">'+fmtEUR(saldoCassa(c.id))+'</td>'+
+          '<td class="row-actions"><button class="btn btn-sm" data-edit-cassa="'+c.id+'">Modifica</button></td>'+
+        '</tr>';
+      }).join('');
+      cBody.querySelectorAll('[data-edit-cassa]').forEach(function(b){
+        b.addEventListener('click', function(){ apriCassa(b.getAttribute('data-edit-cassa')); });
+      });
+    }
+
+    var dBody = document.getElementById('depositiBody');
+    if(state.depositi.length===0){
+      dBody.innerHTML = '<tr class="empty-row"><td colspan="4">Nessun deposito. Aggiungine uno per iniziare.</td></tr>';
+    } else {
+      dBody.innerHTML = state.depositi.map(function(d){
+        return '<tr>'+
+          '<td>'+esc(d.nome)+'</td>'+
+          '<td>'+(d.tipo==='banca'?'Banca':'Contanti')+'</td>'+
+          '<td class="num" style="text-align:right">'+fmtEUR(saldoDeposito(d.id))+'</td>'+
+          '<td class="row-actions"><button class="btn btn-sm" data-edit-deposito="'+d.id+'">Modifica</button></td>'+
+        '</tr>';
+      }).join('');
+      dBody.querySelectorAll('[data-edit-deposito]').forEach(function(b){
+        b.addEventListener('click', function(){ apriDeposito(b.getAttribute('data-edit-deposito')); });
+      });
+    }
+  }
+
+  function apriCassa(id){
+    var c = id ? state.casse.find(function(x){return x.id===id;}) : null;
+    document.getElementById('cassaTitolo').textContent = c ? 'Modifica cassa' : 'Nuova cassa';
+    document.getElementById('cassaId').value = c ? c.id : '';
+    document.getElementById('cNome').value = c ? c.nome : '';
+    document.getElementById('cNomeEn').value = c ? (c.nomeEn||'') : '';
+    document.getElementById('cPerc').value = c ? (c.percentuale||0) : 0;
+    document.getElementById('btnEliminaCassa').style.display = c ? 'inline-flex' : 'none';
+    openModal('modalCassa');
+  }
+  document.getElementById('btnNuovaCassa').addEventListener('click', function(){ apriCassa(null); });
+  document.getElementById('btnConfermaCassa').addEventListener('click', function(){
+    var id = document.getElementById('cassaId').value;
+    var nome = document.getElementById('cNome').value.trim();
+    if(!nome){ showToast('Inserisci un nome'); return; }
+    var nomeEn = document.getElementById('cNomeEn').value.trim();
+    var perc = Number(document.getElementById('cPerc').value)||0;
+    if(id){
+      var c = state.casse.find(function(x){return x.id===id;});
+      c.nome=nome; c.nomeEn=nomeEn; c.percentuale=perc;
+    } else {
+      state.casse.push({id:uid(), nome:nome, nomeEn:nomeEn, percentuale:perc});
+    }
+    saveState(); closeModal('modalCassa'); renderCasse();
+    showToast('Cassa salvata');
+  });
+  document.getElementById('btnEliminaCassa').addEventListener('click', function(){
+    var id = document.getElementById('cassaId').value;
+    if(!id) return;
+    var inUso = state.ricevute.some(function(r){ return r.cassaId===id; });
+    if(inUso && !confirm('Questa cassa è usata in alcune ricevute. Eliminarla comunque?')) return;
+    state.casse = state.casse.filter(function(c){ return c.id!==id; });
+    saveState(); closeModal('modalCassa'); renderCasse();
+    showToast('Cassa eliminata');
+  });
+
+  function apriDeposito(id){
+    var d = id ? state.depositi.find(function(x){return x.id===id;}) : null;
+    document.getElementById('depositoTitolo').textContent = d ? 'Modifica deposito' : 'Nuovo deposito';
+    document.getElementById('depositoId').value = d ? d.id : '';
+    document.getElementById('dNome').value = d ? d.nome : '';
+    document.getElementById('dTipo').value = d ? d.tipo : 'banca';
+    document.getElementById('btnEliminaDeposito').style.display = d ? 'inline-flex' : 'none';
+    openModal('modalDeposito');
+  }
+  document.getElementById('btnNuovoDeposito').addEventListener('click', function(){ apriDeposito(null); });
+  document.getElementById('btnConfermaDeposito').addEventListener('click', function(){
+    var id = document.getElementById('depositoId').value;
+    var nome = document.getElementById('dNome').value.trim();
+    if(!nome){ showToast('Inserisci un nome'); return; }
+    var tipo = document.getElementById('dTipo').value;
+    if(id){
+      var d = state.depositi.find(function(x){return x.id===id;});
+      d.nome=nome; d.tipo=tipo;
+    } else {
+      state.depositi.push({id:uid(), nome:nome, tipo:tipo});
+    }
+    saveState(); closeModal('modalDeposito'); renderCasse();
+    showToast('Deposito salvato');
+  });
+  document.getElementById('btnEliminaDeposito').addEventListener('click', function(){
+    var id = document.getElementById('depositoId').value;
+    if(!id) return;
+    var inUso = state.ricevute.some(function(r){ return r.depositoId===id; });
+    if(inUso && !confirm('Questo deposito è usato in alcune ricevute. Eliminarlo comunque?')) return;
+    state.depositi = state.depositi.filter(function(d){ return d.id!==id; });
+    saveState(); closeModal('modalDeposito'); renderCasse();
+    showToast('Deposito eliminato');
+  });
+
+  /* ================= ANAGRAFICHE ================= */
+  function renderAnagrafiche(){
+    var tipo = document.getElementById('filtAnagTipo').value;
+    var q = document.getElementById('filtAnagNome').value.trim().toLowerCase();
+    var list = state.anagrafiche.filter(function(a){
+      if(tipo && a.tipo!==tipo) return false;
+      if(q && a.nome.toLowerCase().indexOf(q)===-1) return false;
+      return true;
+    }).sort(function(a,b){ return a.nome.localeCompare(b.nome); });
+
+    var body = document.getElementById('anagraficheBody');
+    if(list.length===0){
+      body.innerHTML = '<tr class="empty-row"><td colspan="7">Nessun nominativo trovato.</td></tr>';
+      return;
+    }
+    body.innerHTML = list.map(function(a){
+      var ric = state.ricevute.filter(function(r){ return r.nome.toLowerCase()===a.nome.toLowerCase(); });
+      var tot = ric.reduce(function(s,r){ return s + (r.tipo==='entrata'?1:-1)*(Number(r.totale)||0); }, 0);
+      var tipoLabel = a.tipo==='membro'?'Membro':(a.tipo==='ospite'?'Ospite':'Fornitore');
+      return '<tr>'+
+        '<td><a href="#" data-scheda="'+a.id+'">'+esc(a.nome)+'</a></td>'+
+        '<td>'+tipoLabel+'</td>'+
+        '<td>'+esc(a.telefono||'—')+'</td>'+
+        '<td>'+(a.membroDa?fmtDate(a.membroDa):'—')+'</td>'+
+        '<td class="num">'+ric.length+'</td>'+
+        '<td class="num">'+fmtEUR(tot)+'</td>'+
+        '<td class="row-actions"><button class="btn btn-sm" data-edit-anag="'+a.id+'">Modifica</button></td>'+
+      '</tr>';
+    }).join('');
+    body.querySelectorAll('[data-edit-anag]').forEach(function(b){
+      b.addEventListener('click', function(){ apriAnagrafica(b.getAttribute('data-edit-anag')); });
+    });
+    body.querySelectorAll('[data-scheda]').forEach(function(b){
+      b.addEventListener('click', function(e){ e.preventDefault(); apriScheda(b.getAttribute('data-scheda')); });
+    });
+  }
+  ['filtAnagTipo','filtAnagNome'].forEach(function(id){
+    document.getElementById(id).addEventListener('input', renderAnagrafiche);
+    document.getElementById(id).addEventListener('change', renderAnagrafiche);
+  });
+
+  function apriAnagrafica(id){
+    var a = id ? state.anagrafiche.find(function(x){return x.id===id;}) : null;
+    document.getElementById('anagTitolo').textContent = a ? 'Modifica nominativo' : 'Nuovo nominativo';
+    document.getElementById('anagId').value = a ? a.id : '';
+    document.getElementById('aNome').value = a ? a.nome : '';
+    document.getElementById('aTipo').value = a ? a.tipo : 'membro';
+    document.getElementById('aTelefono').value = a ? (a.telefono||'') : '';
+    document.getElementById('aMembroDa').value = a ? (a.membroDa||'') : '';
+    document.getElementById('aNote').value = a ? (a.note||'') : '';
+    document.getElementById('btnEliminaAnag').style.display = a ? 'inline-flex' : 'none';
+    openModal('modalAnagrafica');
+  }
+  document.getElementById('btnNuovaAnagrafica').addEventListener('click', function(){ apriAnagrafica(null); });
+  document.getElementById('btnConfermaAnag').addEventListener('click', function(){
+    var id = document.getElementById('anagId').value;
+    var nome = document.getElementById('aNome').value.trim();
+    if(!nome){ showToast('Inserisci un nome'); return; }
+    var tipo = document.getElementById('aTipo').value;
+    var telefono = document.getElementById('aTelefono').value.trim();
+    var membroDa = document.getElementById('aMembroDa').value;
+    var note = document.getElementById('aNote').value;
+    if(id){
+      var a = state.anagrafiche.find(function(x){return x.id===id;});
+      var oldNome = a.nome;
+      a.nome=nome; a.tipo=tipo; a.telefono=telefono; a.membroDa=membroDa; a.note=note;
+      if(oldNome.toLowerCase()!==nome.toLowerCase()){
+        state.ricevute.forEach(function(r){ if(r.nome.toLowerCase()===oldNome.toLowerCase()) r.nome = nome; });
+      }
+    } else {
+      state.anagrafiche.push({id:uid(), nome:nome, tipo:tipo, telefono:telefono, membroDa:membroDa, note:note});
+    }
+    saveState(); closeModal('modalAnagrafica'); renderAnagrafiche();
+    showToast('Nominativo salvato');
+  });
+  document.getElementById('btnEliminaAnag').addEventListener('click', function(){
+    var id = document.getElementById('anagId').value;
+    if(!id) return;
+    if(!confirm('Eliminare questo nominativo dalla rubrica? Le ricevute già registrate non vengono toccate.')) return;
+    state.anagrafiche = state.anagrafiche.filter(function(a){ return a.id!==id; });
+    saveState(); closeModal('modalAnagrafica'); renderAnagrafiche();
+    showToast('Nominativo eliminato');
+  });
+
+  function apriScheda(id){
+    var a = state.anagrafiche.find(function(x){return x.id===id;});
+    if(!a) return;
+    document.getElementById('schedaAnagTitolo').textContent = a.nome;
+    var tipoLabel = a.tipo==='membro'?'Membro':(a.tipo==='ospite'?'Ospite':'Fornitore');
+    document.getElementById('schedaAnagInfo').textContent = tipoLabel + (a.telefono?(' · '+a.telefono):'') + (a.membroDa?(' · Membro da '+fmtDate(a.membroDa)):'');
+    var ric = state.ricevute.filter(function(r){ return r.nome.toLowerCase()===a.nome.toLowerCase(); })
+      .sort(function(x,y){ return (y.data+y.numero).localeCompare(x.data+x.numero); });
+    var body = document.getElementById('schedaAnagBody');
+    if(ric.length===0){
+      body.innerHTML = '<tr class="empty-row"><td colspan="4">Nessuna ricevuta per questo nominativo.</td></tr>';
+    } else {
+      body.innerHTML = ric.map(function(r){
+        return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td>'+
+          '<td><span class="tag '+(r.tipo==='entrata'?'tag-e':'tag-u')+'">'+(r.tipo==='entrata'?'Entrata':'Uscita')+'</span></td>'+
+          '<td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td></tr>';
+      }).join('');
+    }
+    var tot = ric.reduce(function(s,r){ return s + (r.tipo==='entrata'?1:-1)*(Number(r.totale)||0); }, 0);
+    document.getElementById('schedaAnagTotale').textContent = fmtEUR(tot);
+    openModal('modalSchedaAnag');
+  }
+
+  /* ================= IMPOSTAZIONI ================= */
+  function renderImpostazioni(){
+    var s = state.settings;
+    document.getElementById('setNomeCampo').value = s.nomeCampo||'';
+    document.getElementById('setCodice').value = s.codice||'';
+    document.getElementById('setDenominazione').value = s.denominazione||'';
+    document.getElementById('setIndirizzo').value = s.indirizzo||'';
+    document.getElementById('setEmail').value = s.email||'';
+    document.getElementById('setTesoriere').value = s.tesoriere||'';
+    document.getElementById('setZeri').value = String(s.zeri||3);
+    document.getElementById('setAnno').value = s.annoNumerazione;
+  }
+  document.getElementById('btnSalvaImpostazioni').addEventListener('click', function(){
+    var s = state.settings;
+    s.nomeCampo = document.getElementById('setNomeCampo').value.trim();
+    s.codice = document.getElementById('setCodice').value.trim().toUpperCase().slice(0,2) || 'CC';
+    s.denominazione = document.getElementById('setDenominazione').value.trim();
+    s.indirizzo = document.getElementById('setIndirizzo').value.trim();
+    s.email = document.getElementById('setEmail').value.trim();
+    s.tesoriere = document.getElementById('setTesoriere').value.trim();
+    s.zeri = Number(document.getElementById('setZeri').value)||3;
+    saveState();
+    document.getElementById('fieldNameLabel').textContent = s.nomeCampo || 'Tesoreria di campo';
+    showToast('Impostazioni salvate');
+  });
+
+  /* ================= BACKUP ================= */
+  var downloadsCap = null;
+  function getDownloads(){
+    if(!window.claude || !window.claude.use) return Promise.resolve(null);
+    if(downloadsCap) return Promise.resolve(downloadsCap);
+    return window.claude.use('downloads').then(function(d){ downloadsCap = d; return d; }).catch(function(){ return null; });
+  }
+  function saveFile(filename, text, mime){
+    return getDownloads().then(function(d){
+      if(d){
+        return d.save({filename:filename, data:new Blob([text],{type:mime||'application/octet-stream'})})
+          .then(function(){ showToast('File salvato'); })
+          .catch(function(err){
+            if(err && err.code==='declined'){ return; }
+            fallbackDownload(filename, text, mime);
+          });
+      } else {
+        fallbackDownload(filename, text, mime);
+      }
+    });
+  }
+  function fallbackDownload(filename, text, mime){
+    try{
+      var blob = new Blob([text], {type: mime||'application/octet-stream'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+      showToast('File pronto per il download');
+    }catch(e){
+      showToast('Impossibile creare il file di backup');
+    }
+  }
+
+  document.getElementById('btnSalvaBackup').addEventListener('click', function(){
+    var data = JSON.stringify(state, null, 2);
+    var fname = 'adsgmdr-backup-'+todayISO()+'.json';
+    saveFile(fname, data, 'application/json');
+  });
+  document.getElementById('btnImportaBackup').addEventListener('click', function(){
+    document.getElementById('fileImportaBackup').click();
+  });
+  document.getElementById('fileImportaBackup').addEventListener('change', function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var parsed = JSON.parse(reader.result);
+        if(!confirm('Importare questo backup? Tutti i dati attuali su questo dispositivo verranno sostituiti.')) return;
+        state = Object.assign(defaultState(), parsed);
+        state.settings = Object.assign(defaultState().settings, parsed.settings || {});
+        saveState();
+        renderAll();
+        showToast('Backup importato');
+      }catch(err){
+        showToast('File non valido');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  document.getElementById('btnEsportaCsv').addEventListener('click', function(){
+    var rows = [['Numero','Data','Tipo','Nome','Cassa','Deposito','Descrizione','Importo','Note']];
+    state.ricevute.forEach(function(r){
+      var cassa = state.casse.find(function(c){return c.id===r.cassaId;});
+      var deposito = state.depositi.find(function(d){return d.id===r.depositoId;});
+      if(r.righe && r.righe.length){
+        r.righe.forEach(function(rg){
+          rows.push([r.numero, r.data, r.tipo, r.nome, cassa?cassa.nome:'', deposito?deposito.nome:'', rg.descrizione, rg.importo, r.note||'']);
+        });
+      } else {
+        rows.push([r.numero, r.data, r.tipo, r.nome, cassa?cassa.nome:'', deposito?deposito.nome:'', '', r.totale, r.note||'']);
+      }
+    });
+    var csv = rows.map(function(row){
+      return row.map(function(cell){
+        var s = String(cell==null?'':cell).replace(/"/g,'""');
+        return /[",\n]/.test(s) ? '"'+s+'"' : s;
+      }).join(',');
+    }).join('\n');
+    saveFile('adsgmdr-ricevute-'+todayISO()+'.csv', csv, 'text/csv');
+  });
+
+  document.getElementById('btnCancellaRicevute').addEventListener('click', function(){
+    if(!confirm('Cancellare TUTTE le ricevute? Non si può annullare.')) return;
+    if(!confirm('Sei sicuro? Questa azione è definitiva.')) return;
+    state.ricevute = [];
+    saveState(); renderAll(); showToast('Ricevute cancellate');
+  });
+  document.getElementById('btnCancellaAnagrafiche').addEventListener('click', function(){
+    if(!confirm('Cancellare tutta l\'anagrafica? Non si può annullare.')) return;
+    if(!confirm('Sei sicuro? Questa azione è definitiva.')) return;
+    state.anagrafiche = [];
+    saveState(); renderAll(); showToast('Anagrafica cancellata');
+  });
+  document.getElementById('btnCancellaTutto').addEventListener('click', function(){
+    if(!confirm('Cancellare TUTTI i dati (ricevute, casse, depositi, anagrafiche)? Le impostazioni restano.')) return;
+    if(!confirm('Sei sicuro? Questa azione è definitiva e non reversibile.')) return;
+    var s = state.settings;
+    state = defaultState();
+    state.settings = s;
+    saveState(); renderAll(); showToast('Tutti i dati sono stati cancellati');
+  });
+
+  /* ================= RICERCA GLOBALE ================= */
+  document.getElementById('globalSearch').addEventListener('input', function(e){
+    var q = e.target.value.trim();
+    if(!q) return;
+    goSection('ricevute');
+    // usa il nome come filtro rapido tramite il campo cassa/testo: qui filtriamo lato client
+    var body = document.getElementById('ricevuteBody');
+    var qq = q.toLowerCase();
+    var list = state.ricevute.filter(function(r){
+      return r.nome.toLowerCase().indexOf(qq)!==-1 || r.numero.toLowerCase().indexOf(qq)!==-1 ||
+        (r.note||'').toLowerCase().indexOf(qq)!==-1;
+    });
+    if(list.length===0){
+      body.innerHTML = '<tr class="empty-row"><td colspan="8">Nessun risultato per "'+esc(q)+'".</td></tr>';
+      return;
+    }
+    body.innerHTML = list.map(function(r){
+      var cassa = state.casse.find(function(c){return c.id===r.cassaId;});
+      var deposito = state.depositi.find(function(d){return d.id===r.depositoId;});
+      return '<tr>'+
+        '<td class="num">'+esc(r.numero)+'</td>'+
+        '<td>'+fmtDate(r.data)+'</td>'+
+        '<td><span class="tag '+(r.tipo==='entrata'?'tag-e':'tag-u')+'">'+(r.tipo==='entrata'?'Entrata':'Uscita')+'</span></td>'+
+        '<td>'+esc(r.nome)+'</td>'+
+        '<td>'+esc(cassa?cassa.nome:"—")+'</td>'+
+        '<td>'+esc(deposito?deposito.nome:"—")+'</td>'+
+        '<td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td>'+
+        '<td class="row-actions"><button class="btn btn-sm" data-edit-ricevuta="'+r.id+'">Apri</button></td>'+
+      '</tr>';
+    }).join('');
+    body.querySelectorAll('[data-edit-ricevuta]').forEach(function(btn){
+      btn.addEventListener('click', function(){ apriRicevuta(btn.getAttribute('data-edit-ricevuta')); });
+    });
+  });
+
+  /* ================= INIT ================= */
+  function renderAll(){
+    document.getElementById('fieldNameLabel').textContent = state.settings.nomeCampo || 'Tesoreria di campo';
+    renderDashboard();
+    populateCassaSelects();
+    populateDepositoSelect();
+    populateAnagraficheDatalist();
+  }
+
+  loadState();
+  renderAll();
+})();
+</script>
+</body>
+</html>
