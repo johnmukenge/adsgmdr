@@ -410,6 +410,8 @@
       <div class="field" style="margin-top:10px;"><label>Tipo fisso (se non c'è una colonna Tipo)</label>
         <select id="impTipoFisso"><option value="">— usa colonna Tipo —</option><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select>
       </div>
+      <div class="field"><label><input type="checkbox" id="impAutoCreateMissing"> Crea automaticamente casse/depositi mancanti</label></div>
+      <p class="hint">Per il formato legacy: mappa <b>Movimento → Tipo</b>, <b>pagamento → Deposito</b>, <b>Registrazioni::Nome → Nome</b>, <b>Descrizione → Note</b>, <b>Id_Reg → ID registrazione</b>.</p>
       <button class="btn btn-primary" id="btnImpAnteprima" style="margin-top:10px;">Genera anteprima →</button>
     </div>
     <div id="impStep2" style="display:none;">
@@ -1073,7 +1075,57 @@ document.getElementById('fileImportaXlsx').addEventListener('change', function(e
   reader.readAsArrayBuffer(file);
   e.target.value='';
 });
-var CAMPI_TARGET = [ ['data','Data'], ['tipo','Tipo (entrata/uscita)'], ['nome','Nome contribuente/fornitore'], ['deposito','Deposito (nome testuale)'], ['cassa','Cassa (nome testuale)'], ['importo','Importo'], ['note','Note/descrizione'] ];
+var CAMPI_TARGET = [
+  ['id_reg','ID registrazione (facoltativo)'],
+  ['data','Data'],
+  ['tipo','Tipo (entrata/uscita)'],
+  ['nome','Nome contribuente/fornitore'],
+  ['deposito','Deposito (nome testuale)'],
+  ['cassa','Cassa (nome testuale)'],
+  ['importo','Importo'],
+  ['note','Note/descrizione']
+];
+var MAP_ALIASES = {
+  id_reg:['id_reg','idreg','id registrazione','id registro'],
+  data:['data','date','giorno'],
+  tipo:['tipo','movimento','mov'],
+  nome:['nome','registrazioni::nome','intestatario','contribuente','fornitore'],
+  deposito:['deposito','pagamento','conto','banca contanti'],
+  cassa:['cassa','fondo'],
+  importo:['importo','totale','amount'],
+  note:['note','descrizione','causale']
+};
+function normKey(s){
+  return String(s||'').toLowerCase().trim().replace(/\s+/g,' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+function parseImporto(raw){
+  var s = String(raw==null?'':raw).trim();
+  if(!s) return 0;
+  s = s.replace(/\s/g,'').replace(/€/g,'');
+  if(s.indexOf(',')!==-1 && s.indexOf('.')!==-1){
+    s = s.replace(/\./g,'').replace(',','.');
+  } else if(s.indexOf(',')!==-1){
+    s = s.replace(',','.');
+  }
+  var n = Number(s);
+  return isFinite(n) ? n : 0;
+}
+function normalizzaTipo(v){
+  var t = normKey(v);
+  if(t.indexOf('usc')===0) return 'uscita';
+  if(t.indexOf('entr')===0) return 'entrata';
+  return '';
+}
+function findByNomeNorm(list, nome){
+  var key = normKey(nome);
+  if(!key) return null;
+  return list.find(function(x){ return normKey(x && x.nome)===key; }) || null;
+}
+function tipoDepositoDaNome(nome){
+  var n = normKey(nome);
+  if(n.indexOf('contant')!==-1) return 'contanti';
+  return 'banca';
+}
 function buildMappingUI(){
   var html = '';
   CAMPI_TARGET.forEach(function(c){
@@ -1081,44 +1133,54 @@ function buildMappingUI(){
       importHeaders.map(function(h,idx){ return '<option value="'+idx+'">'+esc(h)+'</option>'; }).join('')+'</select></div>';
   });
   document.getElementById('impMapping').innerHTML = html;
-  // auto-match per nome colonna simile
+  // auto-match per nome colonna simile / alias legacy
   document.querySelectorAll('#impMapping [data-map]').forEach(function(sel){
     var key = sel.getAttribute('data-map');
+    var aliases = (MAP_ALIASES[key] || [key]).map(normKey);
     importHeaders.forEach(function(h,idx){
-      if(String(h).toLowerCase().indexOf(key)!==-1) sel.value = String(idx);
+      var hk = normKey(h);
+      if(aliases.some(function(a){ return hk===a || hk.indexOf(a)!==-1 || a.indexOf(hk)!==-1; })) sel.value = String(idx);
     });
   });
 }
 document.getElementById('btnImpAnteprima').addEventListener('click', function(){
   var map = {}; document.querySelectorAll('#impMapping [data-map]').forEach(function(sel){ map[sel.getAttribute('data-map')] = sel.value; });
   var tipoFisso = document.getElementById('impTipoFisso').value;
+  var autoCreate = document.getElementById('impAutoCreateMissing').checked;
   var preview = importRows.map(function(row){
     function val(k){ return map[k]!=='' && map[k]!=null ? row[Number(map[k])] : ''; }
+    var idReg = String(val('id_reg')||'').trim();
     var dataRaw = String(val('data')||'').trim();
     var dataISO = normalizzaData(dataRaw);
-    var tipo = tipoFisso || String(val('tipo')||'').toLowerCase().trim();
-    if(tipo.indexOf('usc')===0) tipo='uscita'; else if(tipo.indexOf('entr')===0) tipo='entrata';
+    var tipo = tipoFisso || normalizzaTipo(val('tipo'));
+    if(tipo!=='entrata' && tipo!=='uscita') tipo = normalizzaTipo(val('movimento'));
     var nome = String(val('nome')||'').trim();
     var depositoNome = String(val('deposito')||'').trim();
     var cassaNome = String(val('cassa')||'').trim();
-    var importo = Number(String(val('importo')||'0').replace(',','.'))||0;
+    var importo = parseImporto(val('importo'));
+    if(importo<0) importo = Math.abs(importo);
     var note = String(val('note')||'').trim();
-    var depositoMatch = cache.depositi.find(function(d){return d.nome.toLowerCase()===depositoNome.toLowerCase();});
-    var cassaMatch = cache.casse.find(function(c){return c.nome.toLowerCase()===cassaNome.toLowerCase();});
-    var valida = !!(dataISO && nome && importo>0 && (tipo==='entrata'||tipo==='uscita') && depositoMatch);
-    return { dataISO:dataISO, tipo:tipo, nome:nome, depositoNome:depositoNome, depositoMatch:depositoMatch, cassaNome:cassaNome, cassaMatch:cassaMatch, importo:importo, note:note, valida:valida };
+    var depositoMatch = findByNomeNorm(cache.depositi, depositoNome);
+    var cassaMatch = findByNomeNorm(cache.casse, cassaNome);
+    var depositoOk = depositoMatch || (autoCreate && !!depositoNome);
+    var cassaOk = cassaMatch || (autoCreate && (!cassaNome || !!cassaNome));
+    var valida = !!(dataISO && nome && importo>0 && (tipo==='entrata'||tipo==='uscita') && depositoOk && cassaOk);
+    return { idReg:idReg, dataISO:dataISO, tipo:tipo, nome:nome, depositoNome:depositoNome, depositoMatch:depositoMatch, cassaNome:cassaNome, cassaMatch:cassaMatch, importo:importo, note:note, valida:valida };
   });
   var body = document.getElementById('impPreviewBody');
   body.innerHTML = preview.map(function(p,i){
+    var depLabel = p.depositoMatch ? esc(p.depositoMatch.nome) : (autoCreate && p.depositoNome ? ('<span style="color:var(--gold)">'+esc(p.depositoNome)+' (da creare)</span>') : '<span style="color:var(--red)">non trovato</span>');
+    var cassaLabel = p.cassaNome ? (p.cassaMatch ? esc(p.cassaMatch.nome) : (autoCreate ? '<span style="color:var(--gold)">'+esc(p.cassaNome)+' (da creare)</span>' : '<span style="color:var(--red)">non trovata</span>')) : '—';
+    var noteLabel = (p.idReg ? ('['+esc(p.idReg)+'] ') : '') + esc(p.note);
     return '<tr>'+
       '<td><input type="checkbox" class="imp-check" data-i="'+i+'" '+(p.valida?'checked':'')+'></td>'+
       '<td>'+(p.dataISO?fmtDate(p.dataISO):'<span style="color:var(--red)">manca</span>')+'</td>'+
       '<td>'+(p.tipo||'<span style="color:var(--red)">?</span>')+'</td>'+
       '<td>'+esc(p.nome||'')+'</td>'+
-      '<td>'+(p.depositoMatch?esc(p.depositoMatch.nome):'<span style="color:var(--red)">non trovato</span>')+'</td>'+
-      '<td>'+(p.cassaNome ? (p.cassaMatch?esc(p.cassaMatch.nome):'<span style="color:var(--red)">non trovata</span>') : '—')+'</td>'+
+      '<td>'+depLabel+'</td>'+
+      '<td>'+cassaLabel+'</td>'+
       '<td class="num" style="text-align:right">'+fmtEUR(p.importo)+'</td>'+
-      '<td>'+esc(p.note)+'</td></tr>';
+      '<td>'+noteLabel+'</td></tr>';
   }).join('');
   var validCount = preview.filter(function(p){return p.valida;}).length;
   document.getElementById('impRiepilogo').textContent = preview.length+' righe lette, '+validCount+' pronte per l\'import (le righe senza spunta non verranno importate).';
@@ -1141,19 +1203,52 @@ function normalizzaData(s){
 document.getElementById('btnImpConferma').addEventListener('click', async function(){
   var preview = window._impPreviewData || [];
   var checks = document.querySelectorAll('.imp-check');
+  var autoCreate = document.getElementById('impAutoCreateMissing').checked;
   var daImportare = [], scartate = 0;
   checks.forEach(function(chk){ var i=Number(chk.getAttribute('data-i')); if(chk.checked && preview[i] && preview[i].valida) daImportare.push(preview[i]); else if(chk.checked) scartate++; });
   scartate += preview.length - checks.length;
+
+  if(autoCreate){
+    var depMap = {};
+    cache.depositi.forEach(function(d){ depMap[normKey(d.nome)] = d; });
+    var casseMap = {};
+    cache.casse.forEach(function(c){ casseMap[normKey(c.nome)] = c; });
+
+    var depDaCreare = [];
+    var cassaDaCreare = [];
+    daImportare.forEach(function(p){
+      var dk = normKey(p.depositoNome);
+      if(dk && !depMap[dk]){ depMap[dk] = {nome:p.depositoNome}; depDaCreare.push(p.depositoNome); }
+      var ck = normKey(p.cassaNome);
+      if(ck && !casseMap[ck]){ casseMap[ck] = {nome:p.cassaNome}; cassaDaCreare.push(p.cassaNome); }
+    });
+
+    if(depDaCreare.length){
+      var depPayload = depDaCreare.map(function(n){ return { chiesa_id:activeChiesa.id, nome:n, tipo:tipoDepositoDaNome(n) }; });
+      var { data: depCreati } = await sb.from('depositi').insert(depPayload).select('*');
+      (depCreati||[]).forEach(function(d){ cache.depositi.push(d); });
+    }
+    if(cassaDaCreare.length){
+      var cassePayload = cassaDaCreare.map(function(n){ return { chiesa_id:activeChiesa.id, nome:n, nome_en:'', percentuale_cg:0 }; });
+      var { data: casseCreate } = await sb.from('casse').insert(cassePayload).select('*');
+      (casseCreate||[]).forEach(function(c){ cache.casse.push(c); });
+    }
+  }
+
   var importate = 0;
   for(var i=0;i<daImportare.length;i++){
     var p = daImportare[i];
+    var depositoMatch = findByNomeNorm(cache.depositi, p.depositoNome);
+    var cassaMatch = findByNomeNorm(cache.casse, p.cassaNome);
+    if(!depositoMatch){ scartate++; continue; }
+    var noteFinale = (p.idReg ? ('[LEGACY '+p.idReg+'] ') : '') + (p.note||'');
     try{
       var { data: numeroGen } = await sb.rpc('genera_numero_ricevuta', { p_chiesa_id: activeChiesa.id, p_tipo: p.tipo });
       var { data: nuova } = await sb.from('ricevute').insert({
         chiesa_id: activeChiesa.id, numero: numeroGen, tipo: p.tipo, data: p.dataISO, nome: p.nome,
-        cassa_id: p.cassaMatch ? p.cassaMatch.id : null, deposito_id: p.depositoMatch.id, totale: p.importo, note: p.note
+        cassa_id: cassaMatch ? cassaMatch.id : null, deposito_id: depositoMatch.id, totale: p.importo, note: noteFinale
       }).select().single();
-      if(nuova) await sb.from('righe_ricevuta').insert({ ricevuta_id:nuova.id, descrizione:p.note||'', importo:p.importo });
+      if(nuova) await sb.from('righe_ricevuta').insert({ ricevuta_id:nuova.id, descrizione:noteFinale||'', importo:p.importo });
       await ensureAnagrafica(p.nome, p.tipo==='entrata'?'ospite':'fornitore');
       importate++;
     }catch(e){ scartate++; }
