@@ -1126,6 +1126,14 @@ function tipoDepositoDaNome(nome){
   if(n.indexOf('contant')!==-1) return 'contanti';
   return 'banca';
 }
+function findHeaderIndexByAliases(aliases){
+  var a = (aliases||[]).map(normKey);
+  for(var i=0;i<importHeaders.length;i++){
+    var hk = normKey(importHeaders[i]);
+    if(a.some(function(x){ return hk===x || hk.indexOf(x)!==-1 || x.indexOf(hk)!==-1; })) return i;
+  }
+  return -1;
+}
 function buildMappingUI(){
   var html = '';
   CAMPI_TARGET.forEach(function(c){
@@ -1142,18 +1150,39 @@ function buildMappingUI(){
       if(aliases.some(function(a){ return hk===a || hk.indexOf(a)!==-1 || a.indexOf(hk)!==-1; })) sel.value = String(idx);
     });
   });
+
+  var legacyDetected =
+    findHeaderIndexByAliases(['id_reg'])!==-1 &&
+    findHeaderIndexByAliases(['movimento'])!==-1 &&
+    findHeaderIndexByAliases(['pagamento'])!==-1;
+  if(legacyDetected){
+    var chk = document.getElementById('impAutoCreateMissing');
+    if(chk && !chk.checked) chk.checked = true;
+  }
 }
 document.getElementById('btnImpAnteprima').addEventListener('click', function(){
   var map = {}; document.querySelectorAll('#impMapping [data-map]').forEach(function(sel){ map[sel.getAttribute('data-map')] = sel.value; });
   var tipoFisso = document.getElementById('impTipoFisso').value;
   var autoCreate = document.getElementById('impAutoCreateMissing').checked;
+  var idxFallback = {
+    id_reg: findHeaderIndexByAliases(['id_reg','idreg']),
+    tipo: findHeaderIndexByAliases(['movimento','tipo']),
+    nome: findHeaderIndexByAliases(['registrazioni::nome','nome']),
+    deposito: findHeaderIndexByAliases(['pagamento','deposito']),
+    cassa: findHeaderIndexByAliases(['cassa']),
+    note: findHeaderIndexByAliases(['descrizione','note']),
+    importo: findHeaderIndexByAliases(['importo','totale'])
+  };
   var preview = importRows.map(function(row){
-    function val(k){ return map[k]!=='' && map[k]!=null ? row[Number(map[k])] : ''; }
+    function val(k){
+      if(map[k]!=='' && map[k]!=null) return row[Number(map[k])];
+      var i = idxFallback[k];
+      return i>=0 ? row[i] : '';
+    }
     var idReg = String(val('id_reg')||'').trim();
     var dataRaw = String(val('data')||'').trim();
     var dataISO = normalizzaData(dataRaw);
     var tipo = tipoFisso || normalizzaTipo(val('tipo'));
-    if(tipo!=='entrata' && tipo!=='uscita') tipo = normalizzaTipo(val('movimento'));
     var nome = String(val('nome')||'').trim();
     var depositoNome = String(val('deposito')||'').trim();
     var cassaNome = String(val('cassa')||'').trim();
@@ -1183,7 +1212,8 @@ document.getElementById('btnImpAnteprima').addEventListener('click', function(){
       '<td>'+noteLabel+'</td></tr>';
   }).join('');
   var validCount = preview.filter(function(p){return p.valida;}).length;
-  document.getElementById('impRiepilogo').textContent = preview.length+' righe lette, '+validCount+' pronte per l\'import (le righe senza spunta non verranno importate).';
+  var legacyDetected = idxFallback.id_reg!==-1 && idxFallback.tipo!==-1 && idxFallback.deposito!==-1;
+  document.getElementById('impRiepilogo').textContent = preview.length+' righe lette, '+validCount+' pronte per l\'import (le righe senza spunta non verranno importate).'+(legacyDetected ? ' Preset legacy rilevato: Movimento→Tipo e pagamento→Deposito.' : '');
   window._impPreviewData = preview;
   document.getElementById('impStep1').style.display='none'; document.getElementById('impStep2').style.display='block';
   document.getElementById('impStep1Tab').classList.remove('active'); document.getElementById('impStep2Tab').classList.add('active');
