@@ -398,10 +398,10 @@
   <div class="modal-body">
     <input type="hidden" id="ricevutaId"><input type="hidden" id="ricevutaTipo">
     <div class="field-row"><div class="field"><label>Data</label><input type="date" id="rData"></div><div class="field"><label>Numero</label><input type="text" id="rNumero" disabled></div></div>
-    <div class="field-row"><div class="field"><label id="rNomeLabel">Contribuente</label><input type="text" id="rNome" list="anagraficheList"></div><div class="field"><label>Cassa</label><select id="rCassa"></select></div></div>
+    <div class="field-row"><div class="field"><label id="rNomeLabel">Contribuente</label><input type="text" id="rNome" list="anagraficheList"></div><div class="field"><label>Cassa (unica per tutta la ricevuta)</label><select id="rCassa"></select><div class="hint">Se devi registrare movimenti su casse diverse, crea ricevute separate.</div></div></div>
     <div class="field"><label>Deposito</label><select id="rDeposito"></select></div>
     <datalist id="anagraficheList"></datalist>
-    <div class="field"><label>Dettaglio</label><div class="righe-list" id="righeList"></div><button class="btn btn-sm" id="btnAggiungiRiga">+ Aggiungi riga</button></div>
+    <div class="field"><label>Dettaglio righe (stessa cassa/deposito)</label><div class="righe-list" id="righeList"></div><button class="btn btn-sm" id="btnAggiungiRiga">+ Aggiungi riga</button></div>
     <div class="totale-box"><span>Totale ricevuta</span><span class="num" id="rTotale">0,00 €</span></div>
     <div class="field"><label>Note</label><textarea id="rNote"></textarea></div>
   </div>
@@ -964,6 +964,7 @@ document.getElementById('btnConfermaRicevuta').addEventListener('click', async f
   var depositoId = document.getElementById('rDeposito').value || null;
   var note = document.getElementById('rNote').value;
   if(!nome){ showToast('Inserisci un nome'); return; }
+  if(!cassaId){ showToast('Seleziona una cassa: tutte le righe della ricevuta usano la stessa cassa.'); return; }
   if(!depositoId){ showToast('Seleziona un deposito'); return; }
   var righe = [];
   document.querySelectorAll('#righeList .riga').forEach(function(row){
