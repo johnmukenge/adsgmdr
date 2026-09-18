@@ -322,7 +322,7 @@
         <div class="panel"><div class="panel-body">
           <div class="filters">
             <input type="date" id="repDal"><input type="date" id="repAl">
-            <button class="btn btn-sm" id="btnReportAggiorna">Aggiorna</button>
+            <button class="btn btn-sm" id="btnReportAggiorna">Elabora report</button>
             <button class="btn btn-sm" id="btnAcquisisciReportCampo" style="display:none;">Acquisisci nel campo</button>
             <button class="btn btn-sm" id="btnInviaReportCampo" style="display:none;">Invia report al Campo</button>
             <button class="btn btn-sm" id="btnInviaReportCG" style="display:none;">Invia report alla CG</button>
@@ -665,7 +665,7 @@ function goSection(name){
   document.querySelector('.nav-item[data-section="'+name+'"]').classList.add('active');
   document.getElementById('topTitle').textContent = sectionTitles[name];
   document.getElementById('nav').classList.remove('open');
-  if(name==='report') renderReport();
+  if(name==='report') updateReportActionsUI();
   if(name==='statistiche') renderStatistiche();
   if(name==='impostazioni') renderImpostazioni();
 }
@@ -1227,20 +1227,20 @@ function computeReportData(){
   });
   return { dal:dal, al:al, destinazione:destinazione, righe:righe };
 }
+var lastReportData = null;
+function validateReportFilter(){
+  var dal = document.getElementById('repDal').value;
+  var al = document.getElementById('repAl').value;
+  if(!dal || !al){ showToast('Imposta il periodo (Dal/Al) e poi clicca "Elabora report".'); return null; }
+  if(dal>al){ showToast('Periodo non valido: "Dal" è successivo a "Al".'); return null; }
+  return { dal:dal, al:al };
+}
 function renderReport(){
-  var repDalEl = document.getElementById('repDal');
-  var repAlEl = document.getElementById('repAl');
-  if(!repDalEl.value && !repAlEl.value){
-    var now = new Date();
-    var y = now.getFullYear();
-    var m = now.getMonth();
-    var first = new Date(y, m, 1);
-    var last = new Date(y, m + 1, 0);
-    repDalEl.value = first.toISOString().slice(0,10);
-    repAlEl.value = last.toISOString().slice(0,10);
-  }
   updateReportActionsUI();
+  var f = validateReportFilter();
+  if(!f) return;
   var data = computeReportData();
+  lastReportData = data;
   var destLabel = data.destinazione==='cg' ? 'CG' : 'Campo';
   document.getElementById('reportPercHead').textContent = '% '+destLabel;
   document.getElementById('reportQuotaHead').textContent = 'Quota '+destLabel;
@@ -1253,6 +1253,10 @@ function renderReport(){
   drawChart('chartReportCasse','bar', data.righe.map(function(r){return r.nome;}), [{ label:'Netto', data:data.righe.map(function(r){return r.netto;}), backgroundColor:data.righe.map(function(r){return r.netto>=0?'#2F6F4F':'#A13D2C';}) }]);
 }
 document.getElementById('btnReportAggiorna').addEventListener('click', renderReport);
+['repDal','repAl'].forEach(function(id){
+  var el = document.getElementById(id);
+  if(el) el.addEventListener('change', function(){ lastReportData = null; });
+});
 
 function updateReportActionsUI(){
   var bAcq = document.getElementById('btnAcquisisciReportCampo');
@@ -1287,7 +1291,9 @@ document.getElementById('btnAcquisisciReportCampo').addEventListener('click', as
   if(!campoId){ showToast('Profilo campo non configurato.'); return; }
   if(String(activeChiesa.id)===String(campoId)){ showToast('Seleziona una chiesa locale da acquisire.'); return; }
 
-  var dal = document.getElementById('repDal').value, al = document.getElementById('repAl').value;
+  var f = validateReportFilter();
+  if(!f) return;
+  var dal = f.dal, al = f.al;
   var ric = cache.ricevute.filter(function(r){ return (!dal || r.data>=dal) && (!al || r.data<=al); });
   var entrate = ric.filter(function(r){return r.tipo==='entrata';}).reduce(function(s,r){return s+Number(r.totale||0);},0);
   var uscite = ric.filter(function(r){return r.tipo==='uscita';}).reduce(function(s,r){return s+Number(r.totale||0);},0);
@@ -1335,7 +1341,13 @@ async function ensureCassaByName(chiesaId, nome, nomeEn){
   return created || null;
 }
 async function validaEInviaReport(destinazione){
-  var data = computeReportData();
+  var f = validateReportFilter();
+  if(!f) return;
+  var data = lastReportData;
+  if(!data || data.dal!==f.dal || data.al!==f.al){
+    showToast('Prima clicca "Elabora report" con il filtro impostato.');
+    return;
+  }
   if(data.destinazione!==destinazione){
     showToast(destinazione==='cg' ? 'Seleziona il conto del campo per inviare alla CG.' : 'Questa vista è per report al Campo.');
     return;
