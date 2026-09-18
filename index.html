@@ -114,7 +114,7 @@
   .field-row{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   textarea{ resize:vertical; min-height:60px; }
   .righe-list{ border:1px solid var(--rule); border-radius:var(--radius); margin-bottom:8px; }
-  .riga{ display:grid; grid-template-columns:1fr 130px 34px; gap:8px; padding:8px; border-bottom:1px solid var(--rule); align-items:center; }
+  .riga{ display:grid; grid-template-columns:1fr 180px 130px 34px; gap:8px; padding:8px; border-bottom:1px solid var(--rule); align-items:center; }
   .riga:last-child{ border-bottom:none; }
   .riga input{ padding:7px 9px; border:1px solid var(--rule); border-radius:4px; background:var(--bg); color:var(--ink); }
   .riga .del{ background:none; border:none; color:var(--red); cursor:pointer; font-size:16px; }
@@ -398,10 +398,10 @@
   <div class="modal-body">
     <input type="hidden" id="ricevutaId"><input type="hidden" id="ricevutaTipo">
     <div class="field-row"><div class="field"><label>Data</label><input type="date" id="rData"></div><div class="field"><label>Numero</label><input type="text" id="rNumero" disabled></div></div>
-    <div class="field-row"><div class="field"><label id="rNomeLabel">Contribuente</label><input type="text" id="rNome" list="anagraficheList"></div><div class="field"><label>Cassa (unica per tutta la ricevuta)</label><select id="rCassa"></select><div class="hint">Se devi registrare movimenti su casse diverse, crea ricevute separate.</div></div></div>
+    <div class="field-row"><div class="field"><label id="rNomeLabel">Contribuente</label><input type="text" id="rNome" list="anagraficheList"></div><div class="field"><label>Cassa predefinita (facoltativa)</label><select id="rCassa"></select><div class="hint">Le casse effettive sono impostate su ogni riga del dettaglio.</div></div></div>
     <div class="field"><label>Deposito</label><select id="rDeposito"></select></div>
     <datalist id="anagraficheList"></datalist>
-    <div class="field"><label>Dettaglio righe (stessa cassa/deposito)</label><div class="righe-list" id="righeList"></div><button class="btn btn-sm" id="btnAggiungiRiga">+ Aggiungi riga</button></div>
+    <div class="field"><label>Dettaglio righe (ogni riga con la propria cassa)</label><div class="righe-list" id="righeList"></div><button class="btn btn-sm" id="btnAggiungiRiga">+ Aggiungi riga</button></div>
     <div class="totale-box"><span>Totale ricevuta</span><span class="num" id="rTotale">0,00 €</span></div>
     <div class="field"><label>Note</label><textarea id="rNote"></textarea></div>
   </div>
@@ -675,7 +675,50 @@ function renderAll(){
 }
 
 /* ================= DASHBOARD ================= */
-function saldoCassa(cassaId){ var t=0; cache.ricevute.forEach(function(r){ if(r.cassa_id===cassaId) t += (r.tipo==='entrata'?1:-1)*Number(r.totale||0); }); return t; }
+function getRigheMovimento(r){
+  var righe = (r.righe_ricevuta||[]).filter(function(x){ return Number(x.importo||0)!==0; });
+  if(righe.length===0) return [{ descrizione:'', importo:Number(r.totale||0), cassa_id:r.cassa_id||null }];
+  return righe.map(function(x){ return { descrizione:x.descrizione||'', importo:Number(x.importo||0), cassa_id:x.cassa_id||r.cassa_id||null }; });
+}
+function ricevutaHasCassa(r, cassaId){ return getRigheMovimento(r).some(function(x){ return x.cassa_id===cassaId; }); }
+function cassaLabelRicevuta(r){
+  var ids = Array.from(new Set(getRigheMovimento(r).map(function(x){ return x.cassa_id; }).filter(Boolean)));
+  if(ids.length===0) return '—';
+  if(ids.length===1){
+    var c = cache.casse.find(function(x){ return x.id===ids[0]; });
+    return c ? c.nome : '—';
+  }
+  return 'Multiple ('+ids.length+')';
+}
+function saldoCassa(cassaId){
+  var t=0;
+  cache.ricevute.forEach(function(r){
+    var sign = (r.tipo==='entrata'?1:-1);
+    getRigheMovimento(r).forEach(function(x){ if(x.cassa_id===cassaId) t += sign * Number(x.importo||0); });
+  });
+  return t;
+}
+function saldoCassaPeriodo(cassaId, dal, al){
+  var t=0;
+  cache.ricevute.forEach(function(r){
+    if((dal && r.data<dal) || (al && r.data>al)) return;
+    var sign = (r.tipo==='entrata'?1:-1);
+    getRigheMovimento(r).forEach(function(x){ if(x.cassa_id===cassaId) t += sign * Number(x.importo||0); });
+  });
+  return t;
+}
+function totaliCassaPeriodo(cassaId, dal, al){
+  var entrate=0, uscite=0;
+  cache.ricevute.forEach(function(r){
+    if((dal && r.data<dal) || (al && r.data>al)) return;
+    getRigheMovimento(r).forEach(function(x){
+      if(x.cassa_id!==cassaId) return;
+      var v = Number(x.importo||0);
+      if(r.tipo==='entrata') entrate += v; else uscite += v;
+    });
+  });
+  return { entrate:entrate, uscite:uscite, netto:entrate-uscite };
+}
 function saldoDeposito(depositoId){ var t=0; cache.ricevute.forEach(function(r){ if(r.deposito_id===depositoId) t += (r.tipo==='entrata'?1:-1)*Number(r.totale||0); }); return t; }
 function saldoCampo(){ var t=0; cache.depositi.forEach(function(d){ t+=saldoDeposito(d.id); }); return t; }
 function isCurrentMonth(iso){ if(!iso) return false; var d=new Date(iso+"T00:00:00"), n=new Date(); return d.getFullYear()===n.getFullYear() && d.getMonth()===n.getMonth(); }
@@ -699,10 +742,9 @@ function renderDashboard(){
   var body = document.getElementById('dashRicevuteBody');
   body.innerHTML = recenti.length===0 ? '<tr class="empty-row"><td colspan="6">Nessuna ricevuta ancora.</td></tr>' :
     recenti.map(function(r){
-      var cassa = cache.casse.find(function(c){return c.id===r.cassa_id;});
       return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td>'+
         '<td><span class="tag '+(r.tipo==='entrata'?'tag-e':'tag-u')+'">'+(r.tipo==='entrata'?'Entrata':'Uscita')+'</span></td>'+
-        '<td>'+esc(r.nome)+'</td><td>'+esc(cassa?cassa.nome:"—")+'</td>'+
+        '<td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td>'+
         '<td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td></tr>';
     }).join('');
 
@@ -742,10 +784,7 @@ function renderStatistiche(){
     {label:'Uscite', data:usc, backgroundColor:'#A13D2C'}
   ]);
 
-  var perCassa = cache.casse.map(function(c){
-    var val = list.filter(function(r){ return r.cassa_id===c.id; }).reduce(function(s,r){ return s + (r.tipo==='entrata'?1:-1)*Number(r.totale||0); },0);
-    return { nome:c.nome, val:val };
-  }).filter(function(x){ return x.val!==0; });
+  var perCassa = cache.casse.map(function(c){ return { nome:c.nome, val:saldoCassaPeriodo(c.id, dal, al) }; }).filter(function(x){ return x.val!==0; });
   drawChart('chartStatCasse','bar', perCassa.map(function(x){return x.nome;}), [{ label:'Netto per cassa', data:perCassa.map(function(x){return x.val;}), backgroundColor:perCassa.map(function(x){return x.val>=0?'#2F6F4F':'#A13D2C';}) }]);
 
   renderBudgetCampo();
@@ -771,13 +810,16 @@ function renderBudgetCampo(){
 
   var riepilogo = rows.map(function(b){
     var voce = String(b.voce||'').toLowerCase();
-    var speso = cache.ricevute.filter(function(r){
-      if(r.tipo!=='uscita') return false;
-      var cassa = cache.casse.find(function(c){ return c.id===r.cassa_id; });
-      var cn = String(cassa && cassa.nome || '').toLowerCase();
+    var speso = 0;
+    cache.ricevute.forEach(function(r){
+      if(r.tipo!=='uscita') return;
       var rn = String(r.nome||'').toLowerCase();
-      return cn===voce || rn===voce;
-    }).reduce(function(s,r){ return s+Number(r.totale||0); },0);
+      getRigheMovimento(r).forEach(function(x){
+        var cassa = cache.casse.find(function(c){ return c.id===x.cassa_id; });
+        var cn = String(cassa && cassa.nome || '').toLowerCase();
+        if(cn===voce || rn===voce) speso += Number(x.importo||0);
+      });
+    });
     var budget = Number(b.importo_previsto||0);
     return { categoria:b.categoria, voce:b.voce, budget:budget, speso:speso, delta:speso-budget, over:speso>budget };
   });
@@ -827,7 +869,7 @@ function renderRicevute(){
   var dal = document.getElementById('filtDal').value, al = document.getElementById('filtAl').value;
   var list = cache.ricevute.filter(function(r){
     if(tipo && r.tipo!==tipo) return false;
-    if(cassaId && r.cassa_id!==cassaId) return false;
+    if(cassaId && !ricevutaHasCassa(r, cassaId)) return false;
     if(dal && r.data<dal) return false;
     if(al && r.data>al) return false;
     return true;
@@ -835,11 +877,10 @@ function renderRicevute(){
   var body = document.getElementById('ricevuteBody');
   if(list.length===0){ body.innerHTML='<tr class="empty-row"><td colspan="8">Nessuna ricevuta trovata.</td></tr>'; return; }
   body.innerHTML = list.map(function(r){
-    var cassa = cache.casse.find(function(c){return c.id===r.cassa_id;});
     var deposito = cache.depositi.find(function(d){return d.id===r.deposito_id;});
     return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td>'+
       '<td><span class="tag '+(r.tipo==='entrata'?'tag-e':'tag-u')+'">'+(r.tipo==='entrata'?'Entrata':'Uscita')+'</span></td>'+
-      '<td>'+esc(r.nome)+'</td><td>'+esc(cassa?cassa.nome:"—")+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td>'+
+      '<td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td>'+
       '<td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td>'+
       '<td class="row-actions"><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Apri</button></td></tr>';
   }).join('');
@@ -854,7 +895,7 @@ function renderEntrate(){
   var q = document.getElementById('filtEntrateNome').value.trim().toLowerCase();
   var list = cache.ricevute.filter(function(r){
     if(r.tipo!=='entrata') return false;
-    if(cassaId && r.cassa_id!==cassaId) return false;
+    if(cassaId && !ricevutaHasCassa(r, cassaId)) return false;
     if(dal && r.data<dal) return false;
     if(al && r.data>al) return false;
     if(q && String(r.nome||'').toLowerCase().indexOf(q)===-1) return false;
@@ -864,9 +905,8 @@ function renderEntrate(){
   if(!body) return;
   if(list.length===0){ body.innerHTML='<tr class="empty-row"><td colspan="7">Nessuna entrata trovata.</td></tr>'; return; }
   body.innerHTML = list.map(function(r){
-    var cassa = cache.casse.find(function(c){return c.id===r.cassa_id;});
     var deposito = cache.depositi.find(function(d){return d.id===r.deposito_id;});
-    return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassa?cassa.nome:"—")+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Apri</button></td></tr>';
+    return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Apri</button></td></tr>';
   }).join('');
   body.querySelectorAll('[data-open-ricevuta]').forEach(function(b){ b.addEventListener('click', function(){ apriRicevuta(b.getAttribute('data-open-ricevuta')); }); });
 }
@@ -878,7 +918,7 @@ function renderUscite(){
   var q = document.getElementById('filtUsciteNome').value.trim().toLowerCase();
   var list = cache.ricevute.filter(function(r){
     if(r.tipo!=='uscita') return false;
-    if(cassaId && r.cassa_id!==cassaId) return false;
+    if(cassaId && !ricevutaHasCassa(r, cassaId)) return false;
     if(dal && r.data<dal) return false;
     if(al && r.data>al) return false;
     if(q && String(r.nome||'').toLowerCase().indexOf(q)===-1) return false;
@@ -888,9 +928,8 @@ function renderUscite(){
   if(!body) return;
   if(list.length===0){ body.innerHTML='<tr class="empty-row"><td colspan="7">Nessuna uscita trovata.</td></tr>'; return; }
   body.innerHTML = list.map(function(r){
-    var cassa = cache.casse.find(function(c){return c.id===r.cassa_id;});
     var deposito = cache.depositi.find(function(d){return d.id===r.deposito_id;});
-    return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassa?cassa.nome:"—")+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Apri</button></td></tr>';
+    return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Apri</button></td></tr>';
   }).join('');
   body.querySelectorAll('[data-open-ricevuta]').forEach(function(b){ b.addEventListener('click', function(){ apriRicevuta(b.getAttribute('data-open-ricevuta')); }); });
 }
@@ -900,10 +939,14 @@ function renderUscite(){
 document.getElementById('btnNuovaEntrataSezione').addEventListener('click', function(){ apriModaleRicevuta('entrata', null); });
 document.getElementById('btnNuovaUscitaSezione').addEventListener('click', function(){ apriModaleRicevuta('uscita', null); });
 
-function addRigaRow(desc, importo){
+function cassaOptionsHtml(selectedId){
+  return '<option value="">Cassa…</option>' + cache.casse.map(function(c){ return '<option value="'+c.id+'"'+(selectedId===c.id?' selected':'')+'>'+esc(c.nome)+'</option>'; }).join('');
+}
+function addRigaRow(desc, importo, cassaId){
   var wrap = document.getElementById('righeList');
   var div = document.createElement('div'); div.className='riga';
   div.innerHTML = '<input type="text" class="riga-desc" placeholder="Descrizione" value="'+esc(desc||"")+'">'+
+    '<select class="riga-cassa">'+cassaOptionsHtml(cassaId||'')+'</select>'+
     '<input type="number" step="0.01" class="riga-importo" placeholder="0,00" value="'+(importo!=null?importo:"")+'">'+
     '<button type="button" class="del">✕</button>';
   wrap.appendChild(div);
@@ -911,7 +954,12 @@ function addRigaRow(desc, importo){
   div.querySelector('.riga-importo').addEventListener('input', ricalcolaTotale);
 }
 function ricalcolaTotale(){ var t=0; document.querySelectorAll('#righeList .riga-importo').forEach(function(i){t+=Number(i.value)||0;}); document.getElementById('rTotale').textContent=fmtEUR(t); return t; }
-document.getElementById('btnAggiungiRiga').addEventListener('click', function(){ addRigaRow('',''); });
+document.getElementById('btnAggiungiRiga').addEventListener('click', function(){ addRigaRow('', '', document.getElementById('rCassa').value || ''); });
+document.getElementById('rCassa').addEventListener('change', function(){
+  var def = document.getElementById('rCassa').value || '';
+  if(!def) return;
+  document.querySelectorAll('#righeList .riga .riga-cassa').forEach(function(sel){ if(!sel.value) sel.value = def; });
+});
 
 function apriModaleRicevuta(tipo, existing){
   document.getElementById('righeList').innerHTML='';
@@ -928,14 +976,14 @@ function apriModaleRicevuta(tipo, existing){
     document.getElementById('rDeposito').value = existing.deposito_id || '';
     document.getElementById('rNote').value = existing.note || '';
     var righe = existing.righe_ricevuta || [];
-    if(righe.length===0) addRigaRow('', existing.totale); else righe.forEach(function(rg){ addRigaRow(rg.descrizione, rg.importo); });
+    if(righe.length===0) addRigaRow('', existing.totale, existing.cassa_id||''); else righe.forEach(function(rg){ addRigaRow(rg.descrizione, rg.importo, rg.cassa_id || existing.cassa_id || ''); });
   } else {
     document.getElementById('ricevutaId').value = '';
     document.getElementById('rData').value = todayISO();
     document.getElementById('rNumero').value = '(automatico)';
     document.getElementById('rNome').value = ''; document.getElementById('rCassa').value=''; document.getElementById('rDeposito').value='';
     document.getElementById('rNote').value='';
-    addRigaRow('','');
+    addRigaRow('','', document.getElementById('rCassa').value || '');
   }
   ricalcolaTotale();
   openModal('modalRicevuta');
@@ -964,29 +1012,37 @@ document.getElementById('btnConfermaRicevuta').addEventListener('click', async f
   var depositoId = document.getElementById('rDeposito').value || null;
   var note = document.getElementById('rNote').value;
   if(!nome){ showToast('Inserisci un nome'); return; }
-  if(!cassaId){ showToast('Seleziona una cassa: tutte le righe della ricevuta usano la stessa cassa.'); return; }
   if(!depositoId){ showToast('Seleziona un deposito'); return; }
   var righe = [];
   document.querySelectorAll('#righeList .riga').forEach(function(row){
-    var desc = row.querySelector('.riga-desc').value.trim(); var imp = Number(row.querySelector('.riga-importo').value)||0;
-    if(desc || imp) righe.push({descrizione:desc, importo:imp});
+    var desc = row.querySelector('.riga-desc').value.trim();
+    var imp = Number(row.querySelector('.riga-importo').value)||0;
+    var cassaRiga = row.querySelector('.riga-cassa').value || cassaId || null;
+    if(desc || imp){
+      if(!cassaRiga){ righe.push({descrizione:desc, importo:imp, cassa_id:null}); return; }
+      righe.push({descrizione:desc, importo:imp, cassa_id:cassaRiga});
+    }
   });
+  if(righe.length===0){ showToast('Inserisci almeno una riga valida'); return; }
+  if(righe.some(function(x){ return !x.cassa_id; })){ showToast('Ogni riga deve avere una cassa.'); return; }
+  var cassaUniche = Array.from(new Set(righe.map(function(x){ return x.cassa_id; }).filter(Boolean)));
+  var cassaHeader = cassaUniche.length===1 ? cassaUniche[0] : null;
   var totale = righe.reduce(function(s,r){return s+Number(r.importo||0);},0);
   if(totale<=0){ showToast('Il totale deve essere maggiore di zero'); return; }
 
   if(id){
-    await sb.from('ricevute').update({ data:data, nome:nome, cassa_id:cassaId, deposito_id:depositoId, totale:totale, note:note }).eq('id', id);
+    await sb.from('ricevute').update({ data:data, nome:nome, cassa_id:cassaHeader, deposito_id:depositoId, totale:totale, note:note }).eq('id', id);
     await sb.from('righe_ricevuta').delete().eq('ricevuta_id', id);
-    await sb.from('righe_ricevuta').insert(righe.map(function(r){ return { ricevuta_id:id, descrizione:r.descrizione, importo:r.importo }; }));
+    await sb.from('righe_ricevuta').insert(righe.map(function(r){ return { ricevuta_id:id, descrizione:r.descrizione, importo:r.importo, cassa_id:r.cassa_id }; }));
   } else {
     var { data: numeroGen, error: errNum } = await sb.rpc('genera_numero_ricevuta', { p_chiesa_id: activeChiesa.id, p_tipo: tipo });
     if(errNum){ showToast('Errore nella generazione del numero'); return; }
     var { data: nuova, error: errIns } = await sb.from('ricevute').insert({
       chiesa_id: activeChiesa.id, numero: numeroGen, tipo: tipo, data: data, nome: nome,
-      cassa_id: cassaId, deposito_id: depositoId, totale: totale, note: note
+      cassa_id: cassaHeader, deposito_id: depositoId, totale: totale, note: note
     }).select().single();
     if(errIns){ showToast('Errore nel salvataggio'); return; }
-    await sb.from('righe_ricevuta').insert(righe.map(function(r){ return { ricevuta_id:nuova.id, descrizione:r.descrizione, importo:r.importo }; }));
+    await sb.from('righe_ricevuta').insert(righe.map(function(r){ return { ricevuta_id:nuova.id, descrizione:r.descrizione, importo:r.importo, cassa_id:r.cassa_id }; }));
     await ensureAnagrafica(nome, tipo==='entrata'?'ospite':'fornitore');
   }
   closeModal('modalRicevuta');
@@ -1036,7 +1092,7 @@ document.getElementById('btnConfermaCassa').addEventListener('click', async func
 });
 document.getElementById('btnEliminaCassa').addEventListener('click', async function(){
   var id = document.getElementById('cassaId').value; if(!id) return;
-  var inUso = cache.ricevute.some(function(r){return r.cassa_id===id;});
+  var inUso = cache.ricevute.some(function(r){ return ricevutaHasCassa(r, id); });
   if(inUso && !confirm('Cassa usata in alcune ricevute. Eliminarla comunque?')) return;
   await sb.from('casse').delete().eq('id', id);
   closeModal('modalCassa'); await loadAll(); showToast('Cassa eliminata');
@@ -1093,10 +1149,10 @@ function computeReportData(){
   var hasMap = Object.keys(mapPerc).length>0;
   var casseScope = hasMap ? cache.casse.filter(function(c){ return mapPerc[c.id]!=null; }) : cache.casse;
   var righe = casseScope.map(function(c){
-    var ric = cache.ricevute.filter(function(r){ return r.cassa_id===c.id && (!dal || r.data>=dal) && (!al || r.data<=al); });
-    var entrate = ric.filter(function(r){return r.tipo==='entrata';}).reduce(function(s,r){return s+Number(r.totale||0);},0);
-    var uscite = ric.filter(function(r){return r.tipo==='uscita';}).reduce(function(s,r){return s+Number(r.totale||0);},0);
-    var netto = entrate-uscite;
+    var tot = totaliCassaPeriodo(c.id, dal, al);
+    var entrate = tot.entrate;
+    var uscite = tot.uscite;
+    var netto = tot.netto;
     var perc = hasMap ? Number(mapPerc[c.id]||0) : Number(c.percentuale_cg||0);
     var quota = netto * perc / 100;
     return { cassa_id:c.id, nome:c.nome, entrate:entrate, uscite:uscite, netto:netto, perc:perc, quota:quota };
@@ -1183,7 +1239,7 @@ document.getElementById('btnAcquisisciReportCampo').addEventListener('click', as
   }).select().single();
   if(errIns || !nuova){ showToast('Errore nel salvataggio acquisizione.'); return; }
 
-  await sb.from('righe_ricevuta').insert({ ricevuta_id:nuova.id, descrizione:nota, importo:importo });
+  await sb.from('righe_ricevuta').insert({ ricevuta_id:nuova.id, descrizione:nota, importo:importo, cassa_id: io.cassa ? io.cassa.id : null });
   showToast('Report locale acquisito nel conto del campo.');
 });
 
@@ -1234,7 +1290,7 @@ async function validaEInviaReport(destinazione){
     note: nota
   }).select().single();
   if(errIns || !nuova){ showToast('Errore salvataggio ricevuta di validazione.'); return; }
-  await sb.from('righe_ricevuta').insert({ ricevuta_id:nuova.id, descrizione:nota, importo:totaleQuota });
+  await sb.from('righe_ricevuta').insert({ ricevuta_id:nuova.id, descrizione:nota, importo:totaleQuota, cassa_id:cassaDest.id });
 
   var payload = {
     chiesa_id: activeChiesa.id,
@@ -1441,10 +1497,12 @@ document.getElementById('btnEsportaXlsx').addEventListener('click', function(){
   var wb = XLSX.utils.book_new();
   var ricRows = [['Numero','Data','Tipo','Nome','Cassa','Deposito','Descrizione','Importo','Note']];
   cache.ricevute.forEach(function(r){
-    var cassa = cache.casse.find(function(c){return c.id===r.cassa_id;});
     var deposito = cache.depositi.find(function(d){return d.id===r.deposito_id;});
-    var righe = r.righe_ricevuta && r.righe_ricevuta.length ? r.righe_ricevuta : [{descrizione:'', importo:r.totale}];
-    righe.forEach(function(rg){ ricRows.push([r.numero, r.data, r.tipo, r.nome, cassa?cassa.nome:'', deposito?deposito.nome:'', rg.descrizione, rg.importo, r.note||'']); });
+    var righe = getRigheMovimento(r);
+    righe.forEach(function(rg){
+      var cassa = cache.casse.find(function(c){return c.id===rg.cassa_id;});
+      ricRows.push([r.numero, r.data, r.tipo, r.nome, cassa?cassa.nome:'', deposito?deposito.nome:'', rg.descrizione, rg.importo, r.note||'']);
+    });
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ricRows), 'Ricevute');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Nome','Nome inglese','% CG'], ...cache.casse.map(function(c){return [c.nome,c.nome_en,c.percentuale_cg];})]), 'Casse');
@@ -1597,7 +1655,7 @@ document.getElementById('btnImpAnteprima').addEventListener('click', function(){
     var depositoMatch = findByNomeNorm(cache.depositi, depositoNome);
     var cassaMatch = findByNomeNorm(cache.casse, cassaNome);
     var depositoOk = depositoMatch || (autoCreate && !!depositoNome);
-    var cassaOk = cassaMatch || (autoCreate && (!cassaNome || !!cassaNome));
+    var cassaOk = cassaMatch || (autoCreate && !!cassaNome);
     var valida = !!(dataISO && nome && importo>0 && (tipo==='entrata'||tipo==='uscita') && depositoOk && cassaOk);
     return { idReg:idReg, dataISO:dataISO, tipo:tipo, nome:nome, depositoNome:depositoNome, depositoMatch:depositoMatch, cassaNome:cassaNome, cassaMatch:cassaMatch, importo:importo, note:note, valida:valida };
   });
@@ -1683,7 +1741,7 @@ document.getElementById('btnImpConferma').addEventListener('click', async functi
         chiesa_id: activeChiesa.id, numero: numeroGen, tipo: p.tipo, data: p.dataISO, nome: p.nome,
         cassa_id: cassaMatch ? cassaMatch.id : null, deposito_id: depositoMatch.id, totale: p.importo, note: noteFinale
       }).select().single();
-      if(nuova) await sb.from('righe_ricevuta').insert({ ricevuta_id:nuova.id, descrizione:noteFinale||'', importo:p.importo });
+      if(nuova) await sb.from('righe_ricevuta').insert({ ricevuta_id:nuova.id, descrizione:noteFinale||'', importo:p.importo, cassa_id:cassaMatch ? cassaMatch.id : null });
       await ensureAnagrafica(p.nome, p.tipo==='entrata'?'ospite':'fornitore');
       importate++;
     }catch(e){ scartate++; }
