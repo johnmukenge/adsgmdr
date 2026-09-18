@@ -256,6 +256,8 @@
           <div class="filters">
             <input type="date" id="repDal"><input type="date" id="repAl">
             <button class="btn btn-sm" id="btnReportAggiorna">Aggiorna</button>
+            <button class="btn btn-sm" id="btnAcquisisciReportCampo" style="display:none;">Acquisisci nel campo</button>
+            <button class="btn btn-sm" id="btnInviaReportCG" style="display:none;">Invia report alla CG</button>
           </div>
           <div class="chart-card" style="margin-bottom:16px;"><h3>Netto per cassa nel periodo</h3><div class="canvas-wrap"><canvas id="chartReportCasse"></canvas></div></div>
           <div class="table-wrap">
@@ -441,7 +443,7 @@ if(!window.ADSGMDR_CONFIG || !window.ADSGMDR_CONFIG.supabaseUrl || window.ADSGMD
 }
 var sb = window.supabase.createClient(window.ADSGMDR_CONFIG.supabaseUrl, window.ADSGMDR_CONFIG.supabaseAnonKey);
 
-var profile = null, activeChiesa = null, chieseDisponibili = [];
+var profile = null, profileRoles = [], activeChiesa = null, chieseDisponibili = [];
 var canWrite = false;
 var cache = { casse:[], depositi:[], ricevute:[], anagrafiche:[], beni:[] };
 var charts = {};
@@ -490,6 +492,16 @@ function normalizeRuolo(ruoloRaw){
   if(r==='tesorierechiesa') return 'tesoriere_chiesa';
   return r;
 }
+function parseRuoli(ruoloRaw){
+  var raw = String(ruoloRaw||'').toLowerCase().trim();
+  if(!raw) return [];
+  var parts = raw.split(/[\/,;|+]+/g).map(function(p){ return normalizeRuolo(p); }).filter(Boolean);
+  if(parts.length===0) parts = [normalizeRuolo(raw)];
+  return Array.from(new Set(parts));
+}
+function hasRole(role){ return profileRoles.indexOf(role)!==-1; }
+function isCampo(){ return hasRole('tesoriere_campo'); }
+function isAdminOnly(){ return hasRole('admin') && !isCampo(); }
 
 async function afterLogin(){
   var { data:{ user } } = await sb.auth.getUser();
@@ -505,15 +517,18 @@ async function afterLogin(){
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('appShell').style.display='flex';
 
-  var ruolo = normalizeRuolo(prof.ruolo);
-  if(ruolo==='tesoriere_campo' || ruolo==='admin'){
+  profileRoles = parseRuoli(prof.ruolo);
+
+  // Campo e admin possono consultare tutte le chiese.
+  // Se c'è il ruolo campo, la default è sempre la sua chiesa (campo), mai la prima in lista.
+  if(isCampo() || hasRole('admin')){
     var { data: chiese } = await sb.from('chiese').select('id,nome').order('nome');
     chieseDisponibili = chiese || [];
     var sel = document.getElementById('chiesaSelect');
     sel.innerHTML = chieseDisponibili.map(function(c){ return '<option value="'+c.id+'">'+esc(c.nome)+'</option>'; }).join('');
     sel.style.display = 'inline-block';
     sel.addEventListener('change', function(){ setActiveChiesa(sel.value); });
-    var startId = prof.chiesa_id || (chieseDisponibili[0] && chieseDisponibili[0].id);
+    var startId = isCampo() ? (prof.chiesa_id || (chieseDisponibili[0] && chieseDisponibili[0].id)) : (prof.chiesa_id || (chieseDisponibili[0] && chieseDisponibili[0].id));
     sel.value = startId;
     await setActiveChiesa(startId);
   } else {
@@ -525,8 +540,8 @@ async function setActiveChiesa(chiesaId){
   if(!chiesaId){ showToast('Nessuna chiesa disponibile.'); return; }
   var { data: chiesa } = await sb.from('chiese').select('*').eq('id', chiesaId).single();
   activeChiesa = chiesa;
-  var ruolo = normalizeRuolo(profile && profile.ruolo);
-  canWrite = (ruolo==='admin') || (ruolo==='tesoriere_chiesa' && String(profile.chiesa_id||'')===String(chiesaId||''));
+  var isOwnChiesa = String(profile && profile.chiesa_id || '')===String(chiesaId||'');
+  canWrite = isAdminOnly() || (hasRole('tesoriere_chiesa') && isOwnChiesa) || (isCampo() && isOwnChiesa);
   document.getElementById('fieldNameLabel').textContent = chiesa ? chiesa.nome : 'Tesoreria';
   document.getElementById('readonlyBadge').style.display = canWrite ? 'none' : 'inline-flex';
   document.querySelectorAll('.btn-primary, .btn-danger').forEach(function(b){
@@ -837,6 +852,7 @@ document.getElementById('btnEliminaDeposito').addEventListener('click', async fu
 
 /* ================= REPORT PER CASSA ================= */
 function renderReport(){
+  updateReportActionsUI();
   var dal = document.getElementById('repDal').value, al = document.getElementById('repAl').value;
   var righe = cache.casse.map(function(c){
     var ric = cache.ricevute.filter(function(r){ return r.cassa_id===c.id && (!dal || r.data>=dal) && (!al || r.data<=al); });
@@ -854,6 +870,105 @@ function renderReport(){
   drawChart('chartReportCasse','bar', righe.map(function(r){return r.nome;}), [{ label:'Netto', data:righe.map(function(r){return r.netto;}), backgroundColor:righe.map(function(r){return r.netto>=0?'#2F6F4F':'#A13D2C';}) }]);
 }
 document.getElementById('btnReportAggiorna').addEventListener('click', renderReport);
+
+function updateReportActionsUI(){
+  var bAcq = document.getElementById('btnAcquisisciReportCampo');
+  var bCg = document.getElementById('btnInviaReportCG');
+  var campo = isCampo();
+  bAcq.style.display = campo ? 'inline-flex' : 'none';
+  bCg.style.display = campo ? 'inline-flex' : 'none';
+}
+
+async function getOrCreateCampoCassaEDeposito(campoId){
+  var { data: dep } = await sb.from('depositi').select('*').eq('chiesa_id', campoId).order('nome').limit(1);
+  var deposito = dep && dep[0];
+  if(!deposito){
+    var { data: depNew } = await sb.from('depositi').insert({ chiesa_id:campoId, nome:'Banca', tipo:'banca' }).select().single();
+    deposito = depNew || null;
+  }
+
+  var cassaNome = 'Rapporti chiese locali';
+  var { data: cRows } = await sb.from('casse').select('*').eq('chiesa_id', campoId).ilike('nome', cassaNome).limit(1);
+  var cassa = cRows && cRows[0];
+  if(!cassa){
+    var { data: cNew } = await sb.from('casse').insert({ chiesa_id:campoId, nome:cassaNome, nome_en:'Local churches reports', percentuale_cg:0 }).select().single();
+    cassa = cNew || null;
+  }
+  return { deposito:deposito, cassa:cassa };
+}
+
+document.getElementById('btnAcquisisciReportCampo').addEventListener('click', async function(){
+  if(!isCampo()){ showToast('Operazione consentita solo al tesoriere campo.'); return; }
+  var campoId = profile && profile.chiesa_id;
+  if(!campoId){ showToast('Profilo campo non configurato.'); return; }
+  if(String(activeChiesa.id)===String(campoId)){ showToast('Seleziona una chiesa locale da acquisire.'); return; }
+
+  var dal = document.getElementById('repDal').value, al = document.getElementById('repAl').value;
+  var ric = cache.ricevute.filter(function(r){ return (!dal || r.data>=dal) && (!al || r.data<=al); });
+  var entrate = ric.filter(function(r){return r.tipo==='entrata';}).reduce(function(s,r){return s+Number(r.totale||0);},0);
+  var uscite = ric.filter(function(r){return r.tipo==='uscita';}).reduce(function(s,r){return s+Number(r.totale||0);},0);
+  var netto = entrate-uscite;
+  if(!netto){ showToast('Nessun netto da acquisire nel periodo selezionato.'); return; }
+
+  var io = await getOrCreateCampoCassaEDeposito(campoId);
+  if(!io.deposito){ showToast('Impossibile determinare il deposito del campo.'); return; }
+
+  var tipo = netto>=0 ? 'entrata' : 'uscita';
+  var importo = Math.abs(netto);
+  var periodo = (dal||'inizio')+' → '+(al||'oggi');
+  var nota = '[ACQUISIZIONE LOCALE] '+(activeChiesa.nome||'Chiesa')+' · periodo '+periodo;
+
+  var { data: numeroGen, error: errNum } = await sb.rpc('genera_numero_ricevuta', { p_chiesa_id: campoId, p_tipo: tipo });
+  if(errNum){ showToast('Errore nella generazione del numero.'); return; }
+
+  var { data: nuova, error: errIns } = await sb.from('ricevute').insert({
+    chiesa_id: campoId,
+    numero: numeroGen,
+    tipo: tipo,
+    data: todayISO(),
+    nome: activeChiesa.nome || 'Chiesa locale',
+    cassa_id: io.cassa ? io.cassa.id : null,
+    deposito_id: io.deposito.id,
+    totale: importo,
+    note: nota
+  }).select().single();
+  if(errIns || !nuova){ showToast('Errore nel salvataggio acquisizione.'); return; }
+
+  await sb.from('righe_ricevuta').insert({ ricevuta_id:nuova.id, descrizione:nota, importo:importo });
+  showToast('Report locale acquisito nel conto del campo.');
+});
+
+document.getElementById('btnInviaReportCG').addEventListener('click', async function(){
+  if(!isCampo()){ showToast('Operazione consentita solo al tesoriere campo.'); return; }
+  if(String(activeChiesa.id)!==String(profile && profile.chiesa_id || '')){ showToast('Per inviare alla CG seleziona prima la chiesa del campo.'); return; }
+
+  var dal = document.getElementById('repDal').value, al = document.getElementById('repAl').value;
+  var oggi = new Date();
+  var ref = al ? new Date(al+'T00:00:00') : oggi;
+  var mese = ref.getMonth()+1;
+  var anno = ref.getFullYear();
+
+  var righe = cache.casse.map(function(c){
+    var ric = cache.ricevute.filter(function(r){ return r.cassa_id===c.id && (!dal || r.data>=dal) && (!al || r.data<=al); });
+    var entrate = ric.filter(function(r){return r.tipo==='entrata';}).reduce(function(s,r){return s+Number(r.totale||0);},0);
+    var uscite = ric.filter(function(r){return r.tipo==='uscita';}).reduce(function(s,r){return s+Number(r.totale||0);},0);
+    var netto = entrate-uscite;
+    return { cassa:c.nome, entrate:entrate, uscite:uscite, netto:netto, percentuale_cg:Number(c.percentuale_cg)||0, quota_cg:netto*(Number(c.percentuale_cg)||0)/100 };
+  });
+  var totNetto = righe.reduce(function(s,r){ return s + r.netto; }, 0);
+
+  var payload = {
+    chiesa_id: activeChiesa.id,
+    mese: mese,
+    anno: anno,
+    stato: 'inviato',
+    inviato_il: new Date().toISOString(),
+    totali_json: { periodo:{dal:dal||null, al:al||null}, totale_netto:totNetto, righe:righe }
+  };
+  var { error } = await sb.from('rapporti_mensili').upsert(payload, { onConflict:'chiesa_id,mese,anno' });
+  if(error){ showToast('Errore invio report alla CG.'); return; }
+  showToast('Report marcato come inviato alla CG.');
+});
 
 /* ================= ANAGRAFICHE ================= */
 function renderAnagrafiche(){
