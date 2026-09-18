@@ -1222,18 +1222,29 @@ function computeReportData(){
     var uscite = tot.uscite;
     var netto = tot.netto;
     var perc = hasMap ? Number(mapPerc[c.id]||0) : Number(c.percentuale_cg||0);
-    var quota = netto * perc / 100;
+    var quota = entrate * perc / 100;
     return { cassa_id:c.id, nome:c.nome, entrate:entrate, uscite:uscite, netto:netto, perc:perc, quota:quota };
   });
   return { dal:dal, al:al, destinazione:destinazione, righe:righe };
 }
 function renderReport(){
+  var repDalEl = document.getElementById('repDal');
+  var repAlEl = document.getElementById('repAl');
+  if(!repDalEl.value && !repAlEl.value){
+    var now = new Date();
+    var y = now.getFullYear();
+    var m = now.getMonth();
+    var first = new Date(y, m, 1);
+    var last = new Date(y, m + 1, 0);
+    repDalEl.value = first.toISOString().slice(0,10);
+    repAlEl.value = last.toISOString().slice(0,10);
+  }
   updateReportActionsUI();
   var data = computeReportData();
   var destLabel = data.destinazione==='cg' ? 'CG' : 'Campo';
   document.getElementById('reportPercHead').textContent = '% '+destLabel;
   document.getElementById('reportQuotaHead').textContent = 'Quota '+destLabel;
-  document.getElementById('reportHint').textContent = 'La quota '+destLabel+' è calcolata sul netto del periodo, a scopo indicativo: verifica sempre con il rapporto ufficiale.';
+  document.getElementById('reportHint').textContent = 'La quota '+destLabel+' è calcolata sulle entrate del periodo selezionato (non sul netto).';
   var body = document.getElementById('reportBody');
   body.innerHTML = data.righe.length===0 ? '<tr class="empty-row"><td colspan="6">Nessuna cassa configurata per questa realtà.</td></tr>' :
     data.righe.map(function(r){ return '<tr><td>'+esc(r.nome)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.entrate)+'</td>'+
