@@ -1252,7 +1252,62 @@ function renderReport(){
       '<td>'+r.perc+'%</td><td class="num" style="text-align:right">'+fmtEUR(r.quota)+'</td></tr>'; }).join('');
   drawChart('chartReportCasse','bar', data.righe.map(function(r){return r.nome;}), [{ label:'Netto', data:data.righe.map(function(r){return r.netto;}), backgroundColor:data.righe.map(function(r){return r.netto>=0?'#2F6F4F':'#A13D2C';}) }]);
 }
-document.getElementById('btnReportAggiorna').addEventListener('click', renderReport);
+function parseISODate(iso){
+  var p = String(iso||'').split('-');
+  if(p.length!==3) return null;
+  return new Date(Number(p[0]), Number(p[1])-1, Number(p[2]));
+}
+function firstDayNextMonthISO(iso){
+  var d = parseISODate(iso);
+  if(!d) return todayISO();
+  var n = new Date(d.getFullYear(), d.getMonth()+1, 1);
+  var y = n.getFullYear();
+  var m = String(n.getMonth()+1).padStart(2,'0');
+  var g = String(n.getDate()).padStart(2,'0');
+  return y+'-'+m+'-'+g;
+}
+function periodoLabelMeseIT(iso){
+  var d = parseISODate(iso);
+  if(!d) d = new Date();
+  var label = d.toLocaleDateString('it-IT', { month:'long', year:'numeric' });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+function periodoReportLabel(dalIso, alIso){
+  var d1 = parseISODate(dalIso);
+  var d2 = parseISODate(alIso);
+  if(d1 && d2 && d1.getFullYear()===d2.getFullYear() && d1.getMonth()===d2.getMonth()){
+    return periodoLabelMeseIT(alIso || dalIso);
+  }
+  return fmtDate(dalIso||todayISO()) + ' - ' + fmtDate(alIso||todayISO());
+}
+function prefillUscitaFromReport(data){
+  if(!data) return;
+  var righe = (data.righe||[]).filter(function(r){ return Number(r.quota||0) > 0; });
+  if(righe.length===0){ showToast('Nessuna quota positiva nel filtro selezionato.'); return; }
+
+  var destinatario = data.destinazione==='cg' ? 'Conferenza Generale' : 'Campo Italiano';
+  var periodoLabel = periodoReportLabel(data.dal, data.al);
+  var descrizione = (data.destinazione==='cg' ? 'Versamento a Conferenza Generale per ' : 'Versamento a Campo Italiano per ') + periodoLabel;
+  var dataUscita = firstDayNextMonthISO(data.al || todayISO());
+
+  apriModaleRicevuta('uscita', null);
+  document.getElementById('rData').value = dataUscita;
+  document.getElementById('rNome').value = destinatario;
+  document.getElementById('rNote').value = descrizione;
+
+  var depPref = cache.depositi.find(function(d){ return d.tipo==='banca'; }) || cache.depositi[0] || null;
+  document.getElementById('rDeposito').value = depPref ? depPref.id : '';
+
+  document.getElementById('righeList').innerHTML='';
+  righe.forEach(function(r){ addRigaRow(descrizione, Number(r.quota||0).toFixed(2), r.cassa_id); });
+  ricalcolaTotale();
+}
+function elaboraReport(){
+  renderReport();
+  if(!lastReportData) return;
+  prefillUscitaFromReport(lastReportData);
+}
+document.getElementById('btnReportAggiorna').addEventListener('click', elaboraReport);
 ['repDal','repAl'].forEach(function(id){
   var el = document.getElementById(id);
   if(el) el.addEventListener('change', function(){ lastReportData = null; });
