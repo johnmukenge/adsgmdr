@@ -89,6 +89,9 @@
   .btn-ghost{ border-color:transparent; background:transparent; }
   .btn-sm{ padding:5px 10px; font-size:12.5px; }
   .btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn .spinner{ width:13px; height:13px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; display:none; animation:spin .8s linear infinite; }
+  .btn.is-loading .spinner{ display:inline-block; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
 
   .panel{ background:var(--surface); border:1px solid var(--rule); border-radius:var(--radius); margin-bottom:22px; overflow:hidden; }
   .panel-head{ padding:14px 18px; border-bottom:1px solid var(--rule); display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
@@ -407,7 +410,7 @@
   </div>
   <div class="modal-foot">
     <button class="btn btn-danger btn-ghost" id="btnEliminaRicevuta" style="margin-right:auto; display:none;">Elimina</button>
-    <button class="btn" data-close>Annulla</button><button class="btn btn-primary" id="btnConfermaRicevuta">Conferma</button>
+    <button class="btn" data-close>Annulla</button><button class="btn btn-primary" id="btnConfermaRicevuta"><span class="spinner" aria-hidden="true"></span><span class="label">Conferma</span></button>
   </div>
 </div></div>
 
@@ -954,11 +957,14 @@ function cassaOptionsHtml(selectedId){
   return '<option value="">Cassa…</option>' + cache.casse.map(function(c){ return '<option value="'+c.id+'"'+(selectedId===c.id?' selected':'')+'>'+esc(c.nome)+'</option>'; }).join('');
 }
 function addRigaRow(desc, importo, cassaId){
+  if(desc==null) desc = '';
+  if(importo==null) importo = '';
+  if(!cassaId) cassaId = '';
   var wrap = document.getElementById('righeList');
   var div = document.createElement('div'); div.className='riga';
-  div.innerHTML = '<input type="text" class="riga-desc" placeholder="Descrizione" autocomplete="off" value="'+esc(desc||"")+'">'+
-    '<select class="riga-cassa">'+cassaOptionsHtml(cassaId||'')+'</select>'+
-    '<input type="number" step="0.01" class="riga-importo" placeholder="0,00" autocomplete="off" value="'+(importo!=null?importo:"")+'">'+
+  div.innerHTML = '<input type="text" class="riga-desc" placeholder="Descrizione" autocomplete="off" value="'+esc(desc)+'">'+
+    '<select class="riga-cassa">'+cassaOptionsHtml(cassaId)+'</select>'+
+    '<input type="number" step="0.01" class="riga-importo" placeholder="0,00" autocomplete="off" value="'+importo+'">'+
     '<button type="button" class="del">✕</button>';
   wrap.appendChild(div);
   div.querySelector('.del').addEventListener('click', function(){ div.remove(); ricalcolaTotale(); });
@@ -967,13 +973,38 @@ function addRigaRow(desc, importo, cassaId){
 function ricalcolaTotale(){ var t=0; document.querySelectorAll('#righeList .riga-importo').forEach(function(i){t+=Number(i.value)||0;}); document.getElementById('rTotale').textContent=fmtEUR(t); return t; }
 document.getElementById('btnAggiungiRiga').addEventListener('click', function(){ addRigaRow('', '', ''); });
 
-function apriModaleRicevuta(tipo, existing){
+function resetFormRicevuta(tipo){
+  document.getElementById('ricevutaId').value = '';
+  document.getElementById('ricevutaTipo').value = tipo || 'entrata';
+  document.getElementById('rData').value = todayISO();
+  document.getElementById('rNumero').value = '(automatico)';
+  document.getElementById('rNome').value = '';
+  document.getElementById('rDeposito').value = '';
+  document.getElementById('rNote').value = '';
   document.getElementById('righeList').innerHTML='';
+  addRigaRow('', '', '');
+  ricalcolaTotale();
+}
+
+function clearRicevutaOnClose(){
+  resetFormRicevuta('entrata');
+  document.getElementById('ricevutaTitolo').textContent = 'Nuova entrata';
+  document.getElementById('rNomeLabel').textContent = 'Contribuente';
+  document.getElementById('btnEliminaRicevuta').style.display = 'none';
+}
+
+var modalRicevutaEl = document.getElementById('modalRicevuta');
+modalRicevutaEl.addEventListener('click', function(e){ if(e.target===modalRicevutaEl) clearRicevutaOnClose(); });
+modalRicevutaEl.querySelectorAll('[data-close]').forEach(function(b){ b.addEventListener('click', clearRicevutaOnClose); });
+
+function apriModaleRicevuta(tipo, existing){
+  resetFormRicevuta(tipo);
   document.getElementById('ricevutaTipo').value = tipo;
   document.getElementById('ricevutaTitolo').textContent = existing ? ('Ricevuta '+existing.numero) : (tipo==='entrata'?'Nuova entrata':'Nuova uscita');
   document.getElementById('rNomeLabel').textContent = tipo==='entrata' ? 'Contribuente' : 'Fornitore';
   document.getElementById('btnEliminaRicevuta').style.display = existing ? 'inline-flex' : 'none';
   if(existing){
+    document.getElementById('righeList').innerHTML='';
     document.getElementById('ricevutaId').value = existing.id;
     document.getElementById('rData').value = existing.data;
     document.getElementById('rNumero').value = existing.numero;
@@ -982,13 +1013,6 @@ function apriModaleRicevuta(tipo, existing){
     document.getElementById('rNote').value = existing.note || '';
     var righe = existing.righe_ricevuta || [];
     if(righe.length===0) addRigaRow('', existing.totale, existing.cassa_id||''); else righe.forEach(function(rg){ addRigaRow(rg.descrizione, rg.importo, rg.cassa_id || existing.cassa_id || ''); });
-  } else {
-    document.getElementById('ricevutaId').value = '';
-    document.getElementById('rData').value = todayISO();
-    document.getElementById('rNumero').value = '(automatico)';
-    document.getElementById('rNome').value = ''; document.getElementById('rDeposito').value='';
-    document.getElementById('rNote').value='';
-    addRigaRow('','', '');
   }
   ricalcolaTotale();
   openModal('modalRicevuta');
@@ -998,6 +1022,16 @@ document.getElementById('btnNuovaEntrata').addEventListener('click', function(){
 document.getElementById('btnNuovaUscita').addEventListener('click', function(){ apriModaleRicevuta('uscita', null); });
 document.getElementById('btnNuovaEntrataDash').addEventListener('click', function(){ apriModaleRicevuta('entrata', null); });
 document.getElementById('btnNuovaUscitaDash').addEventListener('click', function(){ apriModaleRicevuta('uscita', null); });
+
+var savingRicevuta = false;
+function setRicevutaSaving(isSaving){
+  var btn = document.getElementById('btnConfermaRicevuta');
+  if(!btn) return;
+  btn.disabled = !!isSaving;
+  btn.classList.toggle('is-loading', !!isSaving);
+  var label = btn.querySelector('.label');
+  if(label) label.textContent = isSaving ? 'Salvataggio…' : 'Conferma';
+}
 
 async function ensureAnagrafica(nome, tipoSuggerito){
   nome = (nome||'').trim(); if(!nome) return;
@@ -1017,8 +1051,9 @@ async function eliminaRicevutaById(id){
 }
 
 document.getElementById('btnConfermaRicevuta').addEventListener('click', async function(){
+  if(savingRicevuta) return;
   if(!canWrite){ showToast('Sola lettura: non puoi modificare questa chiesa.'); return; }
-  var tipo = document.getElementById('ricevutaTipo').value;
+  var tipo = (document.getElementById('ricevutaTipo').value||'').trim().toLowerCase();
   var id = document.getElementById('ricevutaId').value;
   var nome = document.getElementById('rNome').value.trim();
   var data = document.getElementById('rData').value || todayISO();
@@ -1042,25 +1077,46 @@ document.getElementById('btnConfermaRicevuta').addEventListener('click', async f
   var cassaHeader = cassaUniche.length===1 ? cassaUniche[0] : null;
   var totale = righe.reduce(function(s,r){return s+Number(r.importo||0);},0);
   if(totale<=0){ showToast('Il totale deve essere maggiore di zero'); return; }
+  if(tipo!=='entrata' && tipo!=='uscita'){ showToast('Tipo ricevuta non valido. Riapri il modulo.'); return; }
+  if(!activeChiesa || !activeChiesa.id){ showToast('Chiesa non pronta. Attendi un secondo e riprova.'); return; }
 
-  if(id){
-    await sb.from('ricevute').update({ data:data, nome:nome, cassa_id:cassaHeader, deposito_id:depositoId, totale:totale, note:note }).eq('id', id);
-    await sb.from('righe_ricevuta').delete().eq('ricevuta_id', id);
-    await sb.from('righe_ricevuta').insert(righe.map(function(r){ return { ricevuta_id:id, descrizione:r.descrizione, importo:r.importo, cassa_id:r.cassa_id }; }));
-  } else {
-    var { data: numeroGen, error: errNum } = await sb.rpc('genera_numero_ricevuta', { p_chiesa_id: activeChiesa.id, p_tipo: tipo });
-    if(errNum){ showToast('Errore nella generazione del numero'); return; }
-    var { data: nuova, error: errIns } = await sb.from('ricevute').insert({
-      chiesa_id: activeChiesa.id, numero: numeroGen, tipo: tipo, data: data, nome: nome,
-      cassa_id: cassaHeader, deposito_id: depositoId, totale: totale, note: note
-    }).select().single();
-    if(errIns){ showToast('Errore nel salvataggio'); return; }
-    await sb.from('righe_ricevuta').insert(righe.map(function(r){ return { ricevuta_id:nuova.id, descrizione:r.descrizione, importo:r.importo, cassa_id:r.cassa_id }; }));
-    await ensureAnagrafica(nome, tipo==='entrata'?'ospite':'fornitore');
+  savingRicevuta = true;
+  setRicevutaSaving(true);
+  try{
+    if(id){
+      await sb.from('ricevute').update({ data:data, nome:nome, cassa_id:cassaHeader, deposito_id:depositoId, totale:totale, note:note }).eq('id', id);
+      await sb.from('righe_ricevuta').delete().eq('ricevuta_id', id);
+      await sb.from('righe_ricevuta').insert(righe.map(function(r){ return { ricevuta_id:id, descrizione:r.descrizione, importo:r.importo, cassa_id:r.cassa_id }; }));
+    } else {
+      var numeroGen = null, errNum = null;
+      for(var tentativo=1; tentativo<=2; tentativo++){
+        var resNum = await sb.rpc('genera_numero_ricevuta', { p_chiesa_id: activeChiesa.id, p_tipo: tipo });
+        numeroGen = resNum.data; errNum = resNum.error;
+        if(!errNum && numeroGen) break;
+        if(tentativo===1) await new Promise(function(resolve){ setTimeout(resolve, 220); });
+      }
+      if(errNum || !numeroGen){
+        var msg = (errNum && (errNum.message || errNum.details)) ? String(errNum.message || errNum.details) : '';
+        showToast('Errore nella generazione del numero' + (msg ? ': '+msg : ''));
+        return;
+      }
+      var { data: nuova, error: errIns } = await sb.from('ricevute').insert({
+        chiesa_id: activeChiesa.id, numero: numeroGen, tipo: tipo, data: data, nome: nome,
+        cassa_id: cassaHeader, deposito_id: depositoId, totale: totale, note: note
+      }).select().single();
+      if(errIns){ showToast('Errore nel salvataggio'); return; }
+      await sb.from('righe_ricevuta').insert(righe.map(function(r){ return { ricevuta_id:nuova.id, descrizione:r.descrizione, importo:r.importo, cassa_id:r.cassa_id }; }));
+      await ensureAnagrafica(nome, tipo==='entrata'?'ospite':'fornitore');
+    }
+    closeModal('modalRicevuta');
+    await loadAll();
+    showToast('Ricevuta salvata');
+  }catch(e){
+    showToast('Errore nel salvataggio');
+  }finally{
+    savingRicevuta = false;
+    setRicevutaSaving(false);
   }
-  closeModal('modalRicevuta');
-  await loadAll();
-  showToast('Ricevuta salvata');
 });
 document.getElementById('btnEliminaRicevuta').addEventListener('click', async function(){
   var id = document.getElementById('ricevutaId').value;
