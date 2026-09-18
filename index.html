@@ -321,13 +321,14 @@
             <input type="date" id="repDal"><input type="date" id="repAl">
             <button class="btn btn-sm" id="btnReportAggiorna">Aggiorna</button>
             <button class="btn btn-sm" id="btnAcquisisciReportCampo" style="display:none;">Acquisisci nel campo</button>
+            <button class="btn btn-sm" id="btnInviaReportCampo" style="display:none;">Invia report al Campo</button>
             <button class="btn btn-sm" id="btnInviaReportCG" style="display:none;">Invia report alla CG</button>
           </div>
           <div class="chart-card" style="margin-bottom:16px;"><h3>Netto per cassa nel periodo</h3><div class="canvas-wrap"><canvas id="chartReportCasse"></canvas></div></div>
           <div class="table-wrap">
-            <table><thead><tr><th>Cassa</th><th style="text-align:right">Entrate</th><th style="text-align:right">Uscite</th><th style="text-align:right">Netto</th><th>% CG</th><th style="text-align:right">Quota CG</th></tr></thead><tbody id="reportBody"></tbody></table>
+            <table><thead><tr><th>Cassa</th><th style="text-align:right">Entrate</th><th style="text-align:right">Uscite</th><th style="text-align:right">Netto</th><th id="reportPercHead">%</th><th id="reportQuotaHead" style="text-align:right">Quota</th></tr></thead><tbody id="reportBody"></tbody></table>
           </div>
-          <p class="hint">La quota CG è calcolata sul netto del periodo, a scopo indicativo: verifica sempre con il rapporto ufficiale.</p>
+          <p class="hint" id="reportHint">La quota è calcolata sul netto del periodo, a scopo indicativo: verifica sempre con il rapporto ufficiale.</p>
         </div></div>
       </section>
 
@@ -509,7 +510,7 @@ var sb = window.supabase.createClient(window.ADSGMDR_CONFIG.supabaseUrl, window.
 
 var profile = null, profileRoles = [], activeChiesa = null, chieseDisponibili = [];
 var canWrite = false;
-var cache = { casse:[], depositi:[], ricevute:[], anagrafiche:[], beni:[], budgetAnnuali:[] };
+var cache = { casse:[], depositi:[], ricevute:[], anagrafiche:[], beni:[], budgetAnnuali:[], percentualiReport:[] };
 var charts = {};
 var realtimeChannel = null;
 
@@ -636,6 +637,12 @@ async function loadAll(){
     cache.budgetAnnuali = budget || [];
   }catch(e){
     cache.budgetAnnuali = [];
+  }
+  try{
+    var { data: perc } = await sb.from('casse_percentuali_report').select('*').eq('chiesa_id', cid).order('valida_dal', {ascending:false});
+    cache.percentualiReport = perc || [];
+  }catch(e){
+    cache.percentualiReport = [];
   }
   renderAll();
 }
@@ -1061,32 +1068,63 @@ document.getElementById('btnEliminaDeposito').addEventListener('click', async fu
 });
 
 /* ================= REPORT PER CASSA ================= */
-function renderReport(){
-  updateReportActionsUI();
-  var dal = document.getElementById('repDal').value, al = document.getElementById('repAl').value;
-  var righe = cache.casse.map(function(c){
+function isOwnActiveChiesa(){ return String(activeChiesa && activeChiesa.id || '')===String(profile && profile.chiesa_id || ''); }
+function isTesoriereChiesaOnly(){ return hasRole('tesoriere_chiesa') && !isCampo(); }
+function getDestinazioneReport(){
+  if(isCampo() && isOwnActiveChiesa()) return 'cg';
+  if(isTesoriereChiesaOnly() && isOwnActiveChiesa()) return 'campo';
+  if(isCampo() && !isOwnActiveChiesa()) return 'campo';
+  return 'cg';
+}
+function getPercentualiEffettive(dest, refDateISO){
+  var ref = refDateISO || todayISO();
+  var perCassa = {};
+  var filtered = (cache.percentualiReport||[]).filter(function(p){ return p.destinazione===dest && (!p.valida_dal || p.valida_dal<=ref); });
+  filtered.sort(function(a,b){ return String(b.valida_dal||'').localeCompare(String(a.valida_dal||'')); });
+  filtered.forEach(function(p){ if(perCassa[p.cassa_id]==null) perCassa[p.cassa_id] = Number(p.percentuale)||0; });
+  return perCassa;
+}
+function computeReportData(){
+  var dal = document.getElementById('repDal').value;
+  var al = document.getElementById('repAl').value;
+  var destinazione = getDestinazioneReport();
+  var mapPerc = getPercentualiEffettive(destinazione, al||todayISO());
+  var hasMap = Object.keys(mapPerc).length>0;
+  var casseScope = hasMap ? cache.casse.filter(function(c){ return mapPerc[c.id]!=null; }) : cache.casse;
+  var righe = casseScope.map(function(c){
     var ric = cache.ricevute.filter(function(r){ return r.cassa_id===c.id && (!dal || r.data>=dal) && (!al || r.data<=al); });
     var entrate = ric.filter(function(r){return r.tipo==='entrata';}).reduce(function(s,r){return s+Number(r.totale||0);},0);
     var uscite = ric.filter(function(r){return r.tipo==='uscita';}).reduce(function(s,r){return s+Number(r.totale||0);},0);
     var netto = entrate-uscite;
-    var quota = netto * (Number(c.percentuale_cg)||0) / 100;
-    return { nome:c.nome, entrate:entrate, uscite:uscite, netto:netto, perc:c.percentuale_cg||0, quota:quota };
+    var perc = hasMap ? Number(mapPerc[c.id]||0) : Number(c.percentuale_cg||0);
+    var quota = netto * perc / 100;
+    return { cassa_id:c.id, nome:c.nome, entrate:entrate, uscite:uscite, netto:netto, perc:perc, quota:quota };
   });
+  return { dal:dal, al:al, destinazione:destinazione, righe:righe };
+}
+function renderReport(){
+  updateReportActionsUI();
+  var data = computeReportData();
+  var destLabel = data.destinazione==='cg' ? 'CG' : 'Campo';
+  document.getElementById('reportPercHead').textContent = '% '+destLabel;
+  document.getElementById('reportQuotaHead').textContent = 'Quota '+destLabel;
+  document.getElementById('reportHint').textContent = 'La quota '+destLabel+' è calcolata sul netto del periodo, a scopo indicativo: verifica sempre con il rapporto ufficiale.';
   var body = document.getElementById('reportBody');
-  body.innerHTML = righe.length===0 ? '<tr class="empty-row"><td colspan="6">Nessuna cassa configurata.</td></tr>' :
-    righe.map(function(r){ return '<tr><td>'+esc(r.nome)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.entrate)+'</td>'+
+  body.innerHTML = data.righe.length===0 ? '<tr class="empty-row"><td colspan="6">Nessuna cassa configurata per questa realtà.</td></tr>' :
+    data.righe.map(function(r){ return '<tr><td>'+esc(r.nome)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.entrate)+'</td>'+
       '<td class="num" style="text-align:right">'+fmtEUR(r.uscite)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.netto)+'</td>'+
       '<td>'+r.perc+'%</td><td class="num" style="text-align:right">'+fmtEUR(r.quota)+'</td></tr>'; }).join('');
-  drawChart('chartReportCasse','bar', righe.map(function(r){return r.nome;}), [{ label:'Netto', data:righe.map(function(r){return r.netto;}), backgroundColor:righe.map(function(r){return r.netto>=0?'#2F6F4F':'#A13D2C';}) }]);
+  drawChart('chartReportCasse','bar', data.righe.map(function(r){return r.nome;}), [{ label:'Netto', data:data.righe.map(function(r){return r.netto;}), backgroundColor:data.righe.map(function(r){return r.netto>=0?'#2F6F4F':'#A13D2C';}) }]);
 }
 document.getElementById('btnReportAggiorna').addEventListener('click', renderReport);
 
 function updateReportActionsUI(){
   var bAcq = document.getElementById('btnAcquisisciReportCampo');
+  var bCampo = document.getElementById('btnInviaReportCampo');
   var bCg = document.getElementById('btnInviaReportCG');
-  var campo = isCampo();
-  bAcq.style.display = campo ? 'inline-flex' : 'none';
-  bCg.style.display = campo ? 'inline-flex' : 'none';
+  bAcq.style.display = (isCampo() && !isOwnActiveChiesa()) ? 'inline-flex' : 'none';
+  bCg.style.display = (isCampo() && isOwnActiveChiesa()) ? 'inline-flex' : 'none';
+  bCampo.style.display = (isTesoriereChiesaOnly() && isOwnActiveChiesa()) ? 'inline-flex' : 'none';
 }
 
 async function getOrCreateCampoCassaEDeposito(campoId){
@@ -1148,24 +1186,54 @@ document.getElementById('btnAcquisisciReportCampo').addEventListener('click', as
   showToast('Report locale acquisito nel conto del campo.');
 });
 
-document.getElementById('btnInviaReportCG').addEventListener('click', async function(){
-  if(!isCampo()){ showToast('Operazione consentita solo al tesoriere campo.'); return; }
-  if(String(activeChiesa.id)!==String(profile && profile.chiesa_id || '')){ showToast('Per inviare alla CG seleziona prima la chiesa del campo.'); return; }
-
-  var dal = document.getElementById('repDal').value, al = document.getElementById('repAl').value;
+async function ensureDepositoDefault(chiesaId){
+  var { data: dep } = await sb.from('depositi').select('*').eq('chiesa_id', chiesaId).order('nome').limit(1);
+  if(dep && dep[0]) return dep[0];
+  var { data: depNew } = await sb.from('depositi').insert({ chiesa_id:chiesaId, nome:'Banca', tipo:'banca' }).select().single();
+  return depNew || null;
+}
+async function ensureCassaByName(chiesaId, nome, nomeEn){
+  var { data: found } = await sb.from('casse').select('*').eq('chiesa_id', chiesaId).ilike('nome', nome).limit(1);
+  if(found && found[0]) return found[0];
+  var { data: created } = await sb.from('casse').insert({ chiesa_id:chiesaId, nome:nome, nome_en:nomeEn||'', percentuale_cg:0 }).select().single();
+  return created || null;
+}
+async function validaEInviaReport(destinazione){
+  var data = computeReportData();
+  if(data.destinazione!==destinazione){
+    showToast(destinazione==='cg' ? 'Seleziona il conto del campo per inviare alla CG.' : 'Questa vista è per report al Campo.');
+    return;
+  }
   var oggi = new Date();
-  var ref = al ? new Date(al+'T00:00:00') : oggi;
+  var ref = data.al ? new Date(data.al+'T00:00:00') : oggi;
   var mese = ref.getMonth()+1;
   var anno = ref.getFullYear();
+  var totaleQuota = data.righe.reduce(function(s,r){ return s + Number(r.quota||0); }, 0);
+  if(totaleQuota<=0){ showToast('Totale quota nullo: niente da validare.'); return; }
 
-  var righe = cache.casse.map(function(c){
-    var ric = cache.ricevute.filter(function(r){ return r.cassa_id===c.id && (!dal || r.data>=dal) && (!al || r.data<=al); });
-    var entrate = ric.filter(function(r){return r.tipo==='entrata';}).reduce(function(s,r){return s+Number(r.totale||0);},0);
-    var uscite = ric.filter(function(r){return r.tipo==='uscita';}).reduce(function(s,r){return s+Number(r.totale||0);},0);
-    var netto = entrate-uscite;
-    return { cassa:c.nome, entrate:entrate, uscite:uscite, netto:netto, percentuale_cg:Number(c.percentuale_cg)||0, quota_cg:netto*(Number(c.percentuale_cg)||0)/100 };
-  });
-  var totNetto = righe.reduce(function(s,r){ return s + r.netto; }, 0);
+  var dep = await ensureDepositoDefault(activeChiesa.id);
+  if(!dep){ showToast('Deposito non disponibile.'); return; }
+  var cassaNome = destinazione==='cg' ? 'Donazioni CG' : 'Versamenti al Campo';
+  var cassaEn = destinazione==='cg' ? 'CG Donations' : 'Transfers to Field';
+  var cassaDest = await ensureCassaByName(activeChiesa.id, cassaNome, cassaEn);
+  if(!cassaDest){ showToast('Cassa di destinazione non disponibile.'); return; }
+
+  var { data: numeroGen, error: errNum } = await sb.rpc('genera_numero_ricevuta', { p_chiesa_id: activeChiesa.id, p_tipo: 'uscita' });
+  if(errNum){ showToast('Errore nella numerazione.'); return; }
+  var nota = (destinazione==='cg' ? '[VALIDAZIONE REPORT CG] ' : '[VALIDAZIONE REPORT CAMPO] ') + (data.dal||'inizio')+' → '+(data.al||'oggi');
+  var { data: nuova, error: errIns } = await sb.from('ricevute').insert({
+    chiesa_id: activeChiesa.id,
+    numero: numeroGen,
+    tipo: 'uscita',
+    data: data.al || todayISO(),
+    nome: destinazione==='cg' ? 'Conferenza Generale' : 'Campo Italiano',
+    cassa_id: cassaDest.id,
+    deposito_id: dep.id,
+    totale: totaleQuota,
+    note: nota
+  }).select().single();
+  if(errIns || !nuova){ showToast('Errore salvataggio ricevuta di validazione.'); return; }
+  await sb.from('righe_ricevuta').insert({ ricevuta_id:nuova.id, descrizione:nota, importo:totaleQuota });
 
   var payload = {
     chiesa_id: activeChiesa.id,
@@ -1173,11 +1241,22 @@ document.getElementById('btnInviaReportCG').addEventListener('click', async func
     anno: anno,
     stato: 'inviato',
     inviato_il: new Date().toISOString(),
-    totali_json: { periodo:{dal:dal||null, al:al||null}, totale_netto:totNetto, righe:righe }
+    totali_json: { destinatario:destinazione, periodo:{dal:data.dal||null, al:data.al||null}, totale_quota:totaleQuota, ricevuta_validazione_id:nuova.id, righe:data.righe }
   };
   var { error } = await sb.from('rapporti_mensili').upsert(payload, { onConflict:'chiesa_id,mese,anno' });
-  if(error){ showToast('Errore invio report alla CG.'); return; }
-  showToast('Report marcato come inviato alla CG.');
+  if(error){ showToast('Ricevuta salvata, ma errore nel report mensile.'); return; }
+  await loadAll();
+  showToast(destinazione==='cg' ? 'Report inviato alla CG e ricevuta uscita creata.' : 'Report inviato al Campo e ricevuta uscita creata.');
+}
+
+document.getElementById('btnInviaReportCG').addEventListener('click', async function(){
+  if(!(isCampo() && isOwnActiveChiesa())){ showToast('Operazione consentita al tesoriere campo sul conto campo.'); return; }
+  await validaEInviaReport('cg');
+});
+
+document.getElementById('btnInviaReportCampo').addEventListener('click', async function(){
+  if(!(isTesoriereChiesaOnly() && isOwnActiveChiesa())){ showToast('Operazione consentita al tesoriere chiesa sulla propria chiesa.'); return; }
+  await validaEInviaReport('campo');
 });
 
 /* ================= ANAGRAFICHE ================= */
