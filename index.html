@@ -171,7 +171,10 @@
     </div>
     <ul class="nav-list">
       <li class="nav-item active" data-section="dashboard"><span class="nav-icon">🏠</span> Dashboard</li>
+      <li class="nav-item" data-section="entrate"><span class="nav-icon">➕</span> Entrate</li>
+      <li class="nav-item" data-section="uscite"><span class="nav-icon">➖</span> Uscite</li>
       <li class="nav-item" data-section="ricevute"><span class="nav-icon">🧾</span> Ricevute</li>
+      <li class="nav-item" data-section="statistiche"><span class="nav-icon">📈</span> Statistiche</li>
       <li class="nav-item" data-section="casse"><span class="nav-icon">🏦</span> Casse e depositi</li>
       <li class="nav-item" data-section="report"><span class="nav-icon">📊</span> Report per cassa</li>
       <li class="nav-item" data-section="anagrafiche"><span class="nav-icon">👥</span> Anagrafiche</li>
@@ -216,6 +219,67 @@
         <div class="panel">
           <div class="panel-head"><h2>Ultime ricevute</h2></div>
           <div class="table-wrap"><table><thead><tr><th>Numero</th><th>Data</th><th>Tipo</th><th>Nome</th><th>Cassa</th><th style="text-align:right">Importo</th></tr></thead><tbody id="dashRicevuteBody"></tbody></table></div>
+        </div>
+      </section>
+
+      <!-- ENTRATE -->
+      <section class="section" id="sec-entrate">
+        <div class="action-row">
+          <button class="btn btn-primary" id="btnNuovaEntrataSezione">➕ Nuova entrata</button>
+        </div>
+        <div class="panel"><div class="panel-body">
+          <div class="filters">
+            <select id="filtEntrateCassa"><option value="">Tutte le casse</option></select>
+            <input type="date" id="filtEntrateDal"><input type="date" id="filtEntrateAl">
+            <input type="text" id="filtEntrateNome" placeholder="Cerca nominativo…">
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>Numero</th><th>Data</th><th>Nome</th><th>Cassa</th><th>Deposito</th><th style="text-align:right">Importo</th><th></th></tr></thead><tbody id="entrateBody"></tbody></table></div>
+        </div></div>
+      </section>
+
+      <!-- USCITE -->
+      <section class="section" id="sec-uscite">
+        <div class="action-row">
+          <button class="btn btn-danger" id="btnNuovaUscitaSezione">➖ Nuova uscita</button>
+        </div>
+        <div class="panel"><div class="panel-body">
+          <div class="filters">
+            <select id="filtUsciteCassa"><option value="">Tutte le casse</option></select>
+            <input type="date" id="filtUsciteDal"><input type="date" id="filtUsciteAl">
+            <input type="text" id="filtUsciteNome" placeholder="Cerca beneficiario/fornitore…">
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>Numero</th><th>Data</th><th>Nome</th><th>Cassa</th><th>Deposito</th><th style="text-align:right">Importo</th><th></th></tr></thead><tbody id="usciteBody"></tbody></table></div>
+        </div></div>
+      </section>
+
+      <!-- STATISTICHE -->
+      <section class="section" id="sec-statistiche">
+        <div class="panel"><div class="panel-body">
+          <div class="filters">
+            <input type="date" id="statDal"><input type="date" id="statAl">
+            <button class="btn btn-sm" id="btnStatAggiorna">Aggiorna</button>
+          </div>
+          <div class="chart-grid">
+            <div class="chart-card"><h3>Entrate/Uscite nel periodo</h3><div class="canvas-wrap"><canvas id="chartStatTrend"></canvas></div></div>
+            <div class="chart-card"><h3>Distribuzione per cassa</h3><div class="canvas-wrap"><canvas id="chartStatCasse"></canvas></div></div>
+          </div>
+        </div></div>
+        <div class="panel" id="panelBudgetCampo" style="display:none;">
+          <div class="panel-head"><h2>Budget annuale (solo campo)</h2></div>
+          <div class="panel-body">
+            <div class="field-row">
+              <div class="field"><label>Anno</label><input type="number" id="budAnno" min="2000" max="2100"></div>
+              <div class="field"><label>Categoria</label><select id="budCategoria"><option value="dipartimento">Dipartimento</option><option value="operaio">Operaio</option></select></div>
+            </div>
+            <div class="field-row">
+              <div class="field"><label>Voce budget</label><input type="text" id="budVoce" placeholder="Es. Decima / Nome Operaio"></div>
+              <div class="field"><label>Budget annuale €</label><input type="number" step="0.01" id="budImporto" value="0"></div>
+            </div>
+            <button class="btn btn-primary" id="btnSalvaBudget">Salva budget</button>
+            <p class="hint" id="budgetHint" style="margin-top:8px;">Le soglie non bloccano operazioni: evidenziano solo superamenti.</p>
+            <div class="chart-card" style="margin-top:14px;"><h3>Budget vs speso (uscite) — anno selezionato</h3><div class="canvas-wrap"><canvas id="chartBudget"></canvas></div></div>
+            <div class="table-wrap" style="margin-top:10px;"><table><thead><tr><th>Categoria</th><th>Voce</th><th style="text-align:right">Budget</th><th style="text-align:right">Speso</th><th style="text-align:right">Scostamento</th></tr></thead><tbody id="budgetBody"></tbody></table></div>
+          </div>
         </div>
       </section>
 
@@ -445,7 +509,7 @@ var sb = window.supabase.createClient(window.ADSGMDR_CONFIG.supabaseUrl, window.
 
 var profile = null, profileRoles = [], activeChiesa = null, chieseDisponibili = [];
 var canWrite = false;
-var cache = { casse:[], depositi:[], ricevute:[], anagrafiche:[], beni:[] };
+var cache = { casse:[], depositi:[], ricevute:[], anagrafiche:[], beni:[], budgetAnnuali:[] };
 var charts = {};
 var realtimeChannel = null;
 
@@ -567,6 +631,12 @@ async function loadAll(){
   cache.ricevute = c3.data || [];
   cache.anagrafiche = c4.data || [];
   cache.beni = c5.data || [];
+  try{
+    var { data: budget } = await sb.from('budget_annuali').select('*').eq('chiesa_id', cid).order('anno', {ascending:false}).order('categoria').order('voce');
+    cache.budgetAnnuali = budget || [];
+  }catch(e){
+    cache.budgetAnnuali = [];
+  }
   renderAll();
 }
 function subscribeRealtime(){
@@ -577,7 +647,7 @@ function subscribeRealtime(){
 }
 
 /* ================= NAVIGAZIONE ================= */
-var sectionTitles = { dashboard:"Dashboard", ricevute:"Ricevute", casse:"Casse e depositi", report:"Report per cassa", anagrafiche:"Anagrafiche", beni:"Registro beni", backup:"Dati e backup", impostazioni:"Impostazioni" };
+var sectionTitles = { dashboard:"Dashboard", entrate:"Entrate", uscite:"Uscite", ricevute:"Ricevute", statistiche:"Statistiche", casse:"Casse e depositi", report:"Report per cassa", anagrafiche:"Anagrafiche", beni:"Registro beni", backup:"Dati e backup", impostazioni:"Impostazioni" };
 function goSection(name){
   document.querySelectorAll('.section').forEach(function(s){ s.classList.remove('active'); });
   document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
@@ -586,6 +656,7 @@ function goSection(name){
   document.getElementById('topTitle').textContent = sectionTitles[name];
   document.getElementById('nav').classList.remove('open');
   if(name==='report') renderReport();
+  if(name==='statistiche') renderStatistiche();
   if(name==='impostazioni') renderImpostazioni();
 }
 document.querySelectorAll('.nav-item').forEach(function(item){ item.addEventListener('click', function(){ goSection(item.getAttribute('data-section')); }); });
@@ -593,7 +664,7 @@ document.getElementById('navToggle').addEventListener('click', function(){ docum
 
 function renderAll(){
   populateCassaSelects(); populateDepositoSelect(); populateAnagraficheDatalist();
-  renderDashboard(); renderRicevute(); renderCasse(); renderAnagrafiche(); renderBeni();
+  renderDashboard(); renderEntrate(); renderUscite(); renderRicevute(); renderStatistiche(); renderCasse(); renderAnagrafiche(); renderBeni();
 }
 
 /* ================= DASHBOARD ================= */
@@ -649,11 +720,97 @@ function drawChart(canvasId, type, labels, datasets){
     options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:datasets.length>1}}, scales:{ y:{ beginAtZero:true } } } });
 }
 
+/* ================= STATISTICHE ================= */
+function renderStatistiche(){
+  var dal = document.getElementById('statDal').value;
+  var al = document.getElementById('statAl').value;
+  var list = cache.ricevute.filter(function(r){ return (!dal || r.data>=dal) && (!al || r.data<=al); });
+
+  var mesi = ultimiMesi(12);
+  var labels = mesi.map(function(m){ return m.label; });
+  var entr = mesi.map(function(mm){ return list.filter(function(r){ var d=new Date(r.data+'T00:00:00'); return r.tipo==='entrata' && d.getFullYear()===mm.y && d.getMonth()===mm.m; }).reduce(function(s,r){ return s+Number(r.totale||0); },0); });
+  var usc = mesi.map(function(mm){ return list.filter(function(r){ var d=new Date(r.data+'T00:00:00'); return r.tipo==='uscita' && d.getFullYear()===mm.y && d.getMonth()===mm.m; }).reduce(function(s,r){ return s+Number(r.totale||0); },0); });
+  drawChart('chartStatTrend','bar', labels, [
+    {label:'Entrate', data:entr, backgroundColor:'#2F6F4F'},
+    {label:'Uscite', data:usc, backgroundColor:'#A13D2C'}
+  ]);
+
+  var perCassa = cache.casse.map(function(c){
+    var val = list.filter(function(r){ return r.cassa_id===c.id; }).reduce(function(s,r){ return s + (r.tipo==='entrata'?1:-1)*Number(r.totale||0); },0);
+    return { nome:c.nome, val:val };
+  }).filter(function(x){ return x.val!==0; });
+  drawChart('chartStatCasse','bar', perCassa.map(function(x){return x.nome;}), [{ label:'Netto per cassa', data:perCassa.map(function(x){return x.val;}), backgroundColor:perCassa.map(function(x){return x.val>=0?'#2F6F4F':'#A13D2C';}) }]);
+
+  renderBudgetCampo();
+}
+
+function renderBudgetCampo(){
+  var panel = document.getElementById('panelBudgetCampo');
+  var isCampoOwn = isCampo() && String(activeChiesa && activeChiesa.id || '')===String(profile && profile.chiesa_id || '');
+  panel.style.display = isCampoOwn ? 'block' : 'none';
+  if(!isCampoOwn) return;
+
+  var annoEl = document.getElementById('budAnno');
+  if(!annoEl.value) annoEl.value = String(new Date().getFullYear());
+  var anno = Number(annoEl.value) || new Date().getFullYear();
+  var rows = cache.budgetAnnuali.filter(function(b){ return Number(b.anno)===anno; });
+
+  var budgetBody = document.getElementById('budgetBody');
+  if(rows.length===0){
+    budgetBody.innerHTML = '<tr class="empty-row"><td colspan="5">Nessun budget per l\'anno selezionato.</td></tr>';
+    drawChart('chartBudget','bar', [], [{label:'Budget',data:[]},{label:'Speso',data:[]}]);
+    return;
+  }
+
+  var riepilogo = rows.map(function(b){
+    var voce = String(b.voce||'').toLowerCase();
+    var speso = cache.ricevute.filter(function(r){
+      if(r.tipo!=='uscita') return false;
+      var cassa = cache.casse.find(function(c){ return c.id===r.cassa_id; });
+      var cn = String(cassa && cassa.nome || '').toLowerCase();
+      var rn = String(r.nome||'').toLowerCase();
+      return cn===voce || rn===voce;
+    }).reduce(function(s,r){ return s+Number(r.totale||0); },0);
+    var budget = Number(b.importo_previsto||0);
+    return { categoria:b.categoria, voce:b.voce, budget:budget, speso:speso, delta:speso-budget, over:speso>budget };
+  });
+
+  budgetBody.innerHTML = riepilogo.map(function(r){
+    return '<tr'+(r.over?' style="background:var(--red-tint)"':'')+'><td>'+esc(r.categoria)+'</td><td>'+esc(r.voce)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.budget)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.speso)+'</td><td class="num" style="text-align:right;'+(r.over?'color:var(--red);font-weight:600':'')+'">'+fmtEUR(r.delta)+'</td></tr>';
+  }).join('');
+
+  drawChart('chartBudget','bar', riepilogo.map(function(r){return r.voce;}), [
+    { label:'Budget', data:riepilogo.map(function(r){return r.budget;}), backgroundColor:'#B9B29B' },
+    { label:'Speso', data:riepilogo.map(function(r){return r.speso;}), backgroundColor:riepilogo.map(function(r){return r.over?'#A13D2C':'#2F6F4F';}) }
+  ]);
+}
+document.getElementById('btnStatAggiorna').addEventListener('click', renderStatistiche);
+document.getElementById('budAnno').addEventListener('change', renderBudgetCampo);
+document.getElementById('btnSalvaBudget').addEventListener('click', async function(){
+  if(!(isCampo() && String(activeChiesa && activeChiesa.id || '')===String(profile && profile.chiesa_id || ''))){ showToast('Solo tesoriere campo sul conto campo.'); return; }
+  var anno = Number(document.getElementById('budAnno').value) || new Date().getFullYear();
+  var categoria = document.getElementById('budCategoria').value;
+  var voce = document.getElementById('budVoce').value.trim();
+  var importo = Number(document.getElementById('budImporto').value)||0;
+  if(!voce){ showToast('Inserisci la voce budget.'); return; }
+  if(importo<=0){ showToast('Importo budget non valido.'); return; }
+  var { error } = await sb.from('budget_annuali').insert({ chiesa_id:activeChiesa.id, anno:anno, categoria:categoria, voce:voce, importo_previsto:importo });
+  if(error){ showToast('Errore salvataggio budget.'); return; }
+  document.getElementById('budVoce').value='';
+  document.getElementById('budImporto').value='0';
+  await loadAll();
+  showToast('Budget salvato');
+});
+
 /* ================= RICEVUTE ================= */
 function populateCassaSelects(){
   var opts = '<option value="">—</option>' + cache.casse.map(function(c){ return '<option value="'+c.id+'">'+esc(c.nome)+'</option>'; }).join('');
   document.getElementById('rCassa').innerHTML = opts;
   document.getElementById('filtCassa').innerHTML = '<option value="">Tutte le casse</option>' + cache.casse.map(function(c){ return '<option value="'+c.id+'">'+esc(c.nome)+'</option>'; }).join('');
+  var entr = document.getElementById('filtEntrateCassa');
+  var usc = document.getElementById('filtUsciteCassa');
+  if(entr) entr.innerHTML = '<option value="">Tutte le casse</option>' + cache.casse.map(function(c){ return '<option value="'+c.id+'">'+esc(c.nome)+'</option>'; }).join('');
+  if(usc) usc.innerHTML = '<option value="">Tutte le casse</option>' + cache.casse.map(function(c){ return '<option value="'+c.id+'">'+esc(c.nome)+'</option>'; }).join('');
 }
 function populateDepositoSelect(){ document.getElementById('rDeposito').innerHTML = '<option value="">—</option>' + cache.depositi.map(function(d){ return '<option value="'+d.id+'">'+esc(d.nome)+'</option>'; }).join(''); }
 function populateAnagraficheDatalist(){ document.getElementById('anagraficheList').innerHTML = cache.anagrafiche.map(function(a){ return '<option value="'+esc(a.nome)+'">'; }).join(''); }
@@ -682,6 +839,59 @@ function renderRicevute(){
   body.querySelectorAll('[data-open-ricevuta]').forEach(function(b){ b.addEventListener('click', function(){ apriRicevuta(b.getAttribute('data-open-ricevuta')); }); });
 }
 ['filtTipo','filtCassa','filtDal','filtAl'].forEach(function(id){ document.getElementById(id).addEventListener('input', renderRicevute); document.getElementById(id).addEventListener('change', renderRicevute); });
+
+function renderEntrate(){
+  var cassaId = document.getElementById('filtEntrateCassa').value;
+  var dal = document.getElementById('filtEntrateDal').value;
+  var al = document.getElementById('filtEntrateAl').value;
+  var q = document.getElementById('filtEntrateNome').value.trim().toLowerCase();
+  var list = cache.ricevute.filter(function(r){
+    if(r.tipo!=='entrata') return false;
+    if(cassaId && r.cassa_id!==cassaId) return false;
+    if(dal && r.data<dal) return false;
+    if(al && r.data>al) return false;
+    if(q && String(r.nome||'').toLowerCase().indexOf(q)===-1) return false;
+    return true;
+  });
+  var body = document.getElementById('entrateBody');
+  if(!body) return;
+  if(list.length===0){ body.innerHTML='<tr class="empty-row"><td colspan="7">Nessuna entrata trovata.</td></tr>'; return; }
+  body.innerHTML = list.map(function(r){
+    var cassa = cache.casse.find(function(c){return c.id===r.cassa_id;});
+    var deposito = cache.depositi.find(function(d){return d.id===r.deposito_id;});
+    return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassa?cassa.nome:"—")+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Apri</button></td></tr>';
+  }).join('');
+  body.querySelectorAll('[data-open-ricevuta]').forEach(function(b){ b.addEventListener('click', function(){ apriRicevuta(b.getAttribute('data-open-ricevuta')); }); });
+}
+
+function renderUscite(){
+  var cassaId = document.getElementById('filtUsciteCassa').value;
+  var dal = document.getElementById('filtUsciteDal').value;
+  var al = document.getElementById('filtUsciteAl').value;
+  var q = document.getElementById('filtUsciteNome').value.trim().toLowerCase();
+  var list = cache.ricevute.filter(function(r){
+    if(r.tipo!=='uscita') return false;
+    if(cassaId && r.cassa_id!==cassaId) return false;
+    if(dal && r.data<dal) return false;
+    if(al && r.data>al) return false;
+    if(q && String(r.nome||'').toLowerCase().indexOf(q)===-1) return false;
+    return true;
+  });
+  var body = document.getElementById('usciteBody');
+  if(!body) return;
+  if(list.length===0){ body.innerHTML='<tr class="empty-row"><td colspan="7">Nessuna uscita trovata.</td></tr>'; return; }
+  body.innerHTML = list.map(function(r){
+    var cassa = cache.casse.find(function(c){return c.id===r.cassa_id;});
+    var deposito = cache.depositi.find(function(d){return d.id===r.deposito_id;});
+    return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassa?cassa.nome:"—")+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Apri</button></td></tr>';
+  }).join('');
+  body.querySelectorAll('[data-open-ricevuta]').forEach(function(b){ b.addEventListener('click', function(){ apriRicevuta(b.getAttribute('data-open-ricevuta')); }); });
+}
+
+['filtEntrateCassa','filtEntrateDal','filtEntrateAl','filtEntrateNome'].forEach(function(id){ var el=document.getElementById(id); if(el){ el.addEventListener('input', renderEntrate); el.addEventListener('change', renderEntrate); } });
+['filtUsciteCassa','filtUsciteDal','filtUsciteAl','filtUsciteNome'].forEach(function(id){ var el=document.getElementById(id); if(el){ el.addEventListener('input', renderUscite); el.addEventListener('change', renderUscite); } });
+document.getElementById('btnNuovaEntrataSezione').addEventListener('click', function(){ apriModaleRicevuta('entrata', null); });
+document.getElementById('btnNuovaUscitaSezione').addEventListener('click', function(){ apriModaleRicevuta('uscita', null); });
 
 function addRigaRow(desc, importo){
   var wrap = document.getElementById('righeList');
