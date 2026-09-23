@@ -324,14 +324,17 @@
             <input type="date" id="repDal"><input type="date" id="repAl">
             <button class="btn btn-sm" id="btnReportAggiorna">Elabora report</button>
             <button class="btn btn-sm" id="btnAcquisisciReportCampo" style="display:none;">Acquisisci nel campo</button>
-            <button class="btn btn-sm" id="btnInviaReportCampo" style="display:none;">Invia report al Campo</button>
-            <button class="btn btn-sm" id="btnInviaReportCG" style="display:none;">Invia report alla CG</button>
+            <button class="btn btn-sm" id="btnInviaReportCampo" style="display:none;">Prepara uscita per il Campo</button>
+            <button class="btn btn-sm" id="btnInviaReportCG" style="display:none;">Prepara uscita per la CG</button>
           </div>
           <div class="chart-card" style="margin-bottom:16px;"><h3>Netto per cassa nel periodo</h3><div class="canvas-wrap"><canvas id="chartReportCasse"></canvas></div></div>
           <div class="table-wrap">
             <table><thead><tr><th>Cassa</th><th style="text-align:right">Entrate</th><th style="text-align:right">Uscite</th><th style="text-align:right">Netto</th><th id="reportPercHead">%</th><th id="reportQuotaHead" style="text-align:right">Quota</th></tr></thead><tbody id="reportBody"></tbody></table>
           </div>
           <p class="hint" id="reportHint">La quota è calcolata sul netto del periodo, a scopo indicativo: verifica sempre con il rapporto ufficiale.</p>
+          <div class="action-row" style="justify-content:flex-end; margin-top:10px; margin-bottom:0;">
+            <button class="btn btn-primary" id="btnCreaRicevutaDaReport" style="display:none;">Crea ricevuta</button>
+          </div>
         </div></div>
       </section>
 
@@ -1251,6 +1254,11 @@ function renderReport(){
       '<td class="num" style="text-align:right">'+fmtEUR(r.uscite)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.netto)+'</td>'+
       '<td>'+r.perc+'%</td><td class="num" style="text-align:right">'+fmtEUR(r.quota)+'</td></tr>'; }).join('');
   drawChart('chartReportCasse','bar', data.righe.map(function(r){return r.nome;}), [{ label:'Netto', data:data.righe.map(function(r){return r.netto;}), backgroundColor:data.righe.map(function(r){return r.netto>=0?'#2F6F4F':'#A13D2C';}) }]);
+
+  var btnCrea = document.getElementById('btnCreaRicevutaDaReport');
+  var hasQuote = data.righe.some(function(r){ return Number(r.quota||0) > 0; });
+  btnCrea.style.display = canWrite ? 'inline-flex' : 'none';
+  btnCrea.disabled = !hasQuote;
 }
 function parseISODate(iso){
   var p = String(iso||'').split('-');
@@ -1280,14 +1288,15 @@ function periodoReportLabel(dalIso, alIso){
   }
   return fmtDate(dalIso||todayISO()) + ' - ' + fmtDate(alIso||todayISO());
 }
-function prefillUscitaFromReport(data){
+function prefillUscitaFromReport(data, forcedDestinazione){
   if(!data) return;
   var righe = (data.righe||[]).filter(function(r){ return Number(r.quota||0) > 0; });
   if(righe.length===0){ showToast('Nessuna quota positiva nel filtro selezionato.'); return; }
 
-  var destinatario = data.destinazione==='cg' ? 'Conferenza Generale' : 'Campo Italiano';
+  var dest = forcedDestinazione || data.destinazione;
+  var destinatario = dest==='cg' ? 'Conferenza Generale' : 'Campo Italiano';
   var periodoLabel = periodoReportLabel(data.dal, data.al);
-  var descrizione = (data.destinazione==='cg' ? 'Versamento a Conferenza Generale per ' : 'Versamento a Campo Italiano per ') + periodoLabel;
+  var descrizione = (dest==='cg' ? 'Versamento a Conferenza Generale per ' : 'Versamento a Campo Italiano per ') + periodoLabel;
   var dataUscita = firstDayNextMonthISO(data.al || todayISO());
 
   apriModaleRicevuta('uscita', null);
@@ -1302,15 +1311,25 @@ function prefillUscitaFromReport(data){
   righe.forEach(function(r){ addRigaRow(descrizione, Number(r.quota||0).toFixed(2), r.cassa_id); });
   ricalcolaTotale();
 }
-function elaboraReport(){
-  renderReport();
-  if(!lastReportData) return;
-  prefillUscitaFromReport(lastReportData);
-}
-document.getElementById('btnReportAggiorna').addEventListener('click', elaboraReport);
+document.getElementById('btnReportAggiorna').addEventListener('click', renderReport);
 ['repDal','repAl'].forEach(function(id){
   var el = document.getElementById(id);
-  if(el) el.addEventListener('change', function(){ lastReportData = null; });
+  if(el) el.addEventListener('change', function(){
+    lastReportData = null;
+    var btnCrea = document.getElementById('btnCreaRicevutaDaReport');
+    if(btnCrea){ btnCrea.disabled = true; }
+  });
+});
+
+document.getElementById('btnCreaRicevutaDaReport').addEventListener('click', function(){
+  var f = validateReportFilter();
+  if(!f) return;
+  if(!lastReportData || lastReportData.dal!==f.dal || lastReportData.al!==f.al){
+    showToast('Prima clicca "Elabora report" con il filtro impostato.');
+    return;
+  }
+  prefillUscitaFromReport(lastReportData);
+  showToast('Bozza ricevuta pronta: verifica e conferma manualmente.');
 });
 
 function updateReportActionsUI(){
@@ -1318,8 +1337,8 @@ function updateReportActionsUI(){
   var bCampo = document.getElementById('btnInviaReportCampo');
   var bCg = document.getElementById('btnInviaReportCG');
   bAcq.style.display = (isCampo() && !isOwnActiveChiesa()) ? 'inline-flex' : 'none';
-  bCg.style.display = (isCampo() && isOwnActiveChiesa()) ? 'inline-flex' : 'none';
-  bCampo.style.display = (isTesoriereChiesaOnly() && isOwnActiveChiesa()) ? 'inline-flex' : 'none';
+  bCg.style.display = 'none';
+  bCampo.style.display = 'none';
 }
 
 async function getOrCreateCampoCassaEDeposito(campoId){
@@ -1454,12 +1473,20 @@ async function validaEInviaReport(destinazione){
 
 document.getElementById('btnInviaReportCG').addEventListener('click', async function(){
   if(!(isCampo() && isOwnActiveChiesa())){ showToast('Operazione consentita al tesoriere campo sul conto campo.'); return; }
-  await validaEInviaReport('cg');
+  var f = validateReportFilter();
+  if(!f) return;
+  if(!lastReportData || lastReportData.dal!==f.dal || lastReportData.al!==f.al){ showToast('Prima clicca "Elabora report" con il filtro impostato.'); return; }
+  prefillUscitaFromReport(lastReportData, 'cg');
+  showToast('Bozza uscita per CG pronta: verifica e poi conferma manualmente.');
 });
 
 document.getElementById('btnInviaReportCampo').addEventListener('click', async function(){
   if(!(isTesoriereChiesaOnly() && isOwnActiveChiesa())){ showToast('Operazione consentita al tesoriere chiesa sulla propria chiesa.'); return; }
-  await validaEInviaReport('campo');
+  var f = validateReportFilter();
+  if(!f) return;
+  if(!lastReportData || lastReportData.dal!==f.dal || lastReportData.al!==f.al){ showToast('Prima clicca "Elabora report" con il filtro impostato.'); return; }
+  prefillUscitaFromReport(lastReportData, 'campo');
+  showToast('Bozza uscita per Campo pronta: verifica e poi conferma manualmente.');
 });
 
 /* ================= ANAGRAFICHE ================= */
