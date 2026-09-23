@@ -278,10 +278,14 @@
               <div class="field"><label>Voce budget</label><input type="text" id="budVoce" placeholder="Es. Decima / Nome Operaio"></div>
               <div class="field"><label>Budget annuale €</label><input type="number" step="0.01" id="budImporto" value="0"></div>
             </div>
-            <button class="btn btn-primary" id="btnSalvaBudget">Salva budget</button>
+            <div class="action-row" style="margin-bottom:8px;">
+              <button class="btn btn-primary" id="btnSalvaBudget">Salva budget</button>
+              <button class="btn" id="btnClonaBudgetPrev">Clona da anno precedente</button>
+            </div>
+            <div id="budgetSummary" class="hint" style="margin-top:4px;"></div>
             <p class="hint" id="budgetHint" style="margin-top:8px;">Le soglie non bloccano operazioni: evidenziano solo superamenti.</p>
             <div class="chart-card" style="margin-top:14px;"><h3>Budget vs speso (uscite) — anno selezionato</h3><div class="canvas-wrap"><canvas id="chartBudget"></canvas></div></div>
-            <div class="table-wrap" style="margin-top:10px;"><table><thead><tr><th>Categoria</th><th>Voce</th><th style="text-align:right">Budget</th><th style="text-align:right">Speso</th><th style="text-align:right">Scostamento</th></tr></thead><tbody id="budgetBody"></tbody></table></div>
+            <div class="table-wrap" style="margin-top:10px;"><table><thead><tr><th>Categoria</th><th>Voce</th><th style="text-align:right">Budget</th><th style="text-align:right">Speso</th><th style="text-align:right">Scostamento</th><th style="text-align:right">Utilizzo</th></tr></thead><tbody id="budgetBody"></tbody></table></div>
           </div>
         </div>
       </section>
@@ -806,19 +810,25 @@ function renderBudgetCampo(){
   if(!annoEl.value) annoEl.value = String(new Date().getFullYear());
   var anno = Number(annoEl.value) || new Date().getFullYear();
   var rows = cache.budgetAnnuali.filter(function(b){ return Number(b.anno)===anno; });
+  var daAnno = anno+'-01-01';
+  var aAnno = anno+'-12-31';
+  var usciteAnno = cache.ricevute.filter(function(r){ return r.tipo==='uscita' && r.data>=daAnno && r.data<=aAnno; });
+  var hintEl = document.getElementById('budgetHint');
+  var summaryEl = document.getElementById('budgetSummary');
 
   var budgetBody = document.getElementById('budgetBody');
   if(rows.length===0){
-    budgetBody.innerHTML = '<tr class="empty-row"><td colspan="5">Nessun budget per l\'anno selezionato.</td></tr>';
+    budgetBody.innerHTML = '<tr class="empty-row"><td colspan="6">Nessun budget per l\'anno selezionato.</td></tr>';
     drawChart('chartBudget','bar', [], [{label:'Budget',data:[]},{label:'Speso',data:[]}]);
+    if(summaryEl) summaryEl.textContent = 'Anno '+anno+': nessun budget caricato.';
+    if(hintEl) hintEl.textContent = 'Prima di registrare le spese del '+anno+', carica o clona il budget annuale.';
     return;
   }
 
   var riepilogo = rows.map(function(b){
     var voce = String(b.voce||'').toLowerCase();
     var speso = 0;
-    cache.ricevute.forEach(function(r){
-      if(r.tipo!=='uscita') return;
+    usciteAnno.forEach(function(r){
       var rn = String(r.nome||'').toLowerCase();
       getRigheMovimento(r).forEach(function(x){
         var cassa = cache.casse.find(function(c){ return c.id===x.cassa_id; });
@@ -827,11 +837,20 @@ function renderBudgetCampo(){
       });
     });
     var budget = Number(b.importo_previsto||0);
-    return { categoria:b.categoria, voce:b.voce, budget:budget, speso:speso, delta:speso-budget, over:speso>budget };
+    var utilizzo = budget>0 ? (speso*100/budget) : 0;
+    return { categoria:b.categoria, voce:b.voce, budget:budget, speso:speso, delta:speso-budget, over:speso>budget, utilizzo:utilizzo };
   });
 
+  var totaleBudget = riepilogo.reduce(function(s,r){ return s + Number(r.budget||0); },0);
+  var totaleSpeso = riepilogo.reduce(function(s,r){ return s + Number(r.speso||0); },0);
+  var residuo = totaleBudget - totaleSpeso;
+  var utilizzoTot = totaleBudget>0 ? (totaleSpeso*100/totaleBudget) : 0;
+  if(summaryEl) summaryEl.innerHTML =
+    '<strong>Anno '+anno+'</strong> · Budget: <strong>'+fmtEUR(totaleBudget)+'</strong> · Speso: <strong>'+fmtEUR(totaleSpeso)+'</strong> · Residuo: <strong style="'+(residuo<0?'color:var(--red)':'')+'">'+fmtEUR(residuo)+'</strong> · Utilizzo: <strong>'+utilizzoTot.toFixed(1)+'%</strong>';
+  if(hintEl) hintEl.textContent = 'Analisi calcolata solo sulle uscite registrate nel '+anno+'.';
+
   budgetBody.innerHTML = riepilogo.map(function(r){
-    return '<tr'+(r.over?' style="background:var(--red-tint)"':'')+'><td>'+esc(r.categoria)+'</td><td>'+esc(r.voce)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.budget)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.speso)+'</td><td class="num" style="text-align:right;'+(r.over?'color:var(--red);font-weight:600':'')+'">'+fmtEUR(r.delta)+'</td></tr>';
+    return '<tr'+(r.over?' style="background:var(--red-tint)"':'')+'><td>'+esc(r.categoria)+'</td><td>'+esc(r.voce)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.budget)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.speso)+'</td><td class="num" style="text-align:right;'+(r.over?'color:var(--red);font-weight:600':'')+'">'+fmtEUR(r.delta)+'</td><td class="num" style="text-align:right;'+(r.utilizzo>100?'color:var(--red);font-weight:600':'')+'">'+r.utilizzo.toFixed(1)+'%</td></tr>';
   }).join('');
 
   drawChart('chartBudget','bar', riepilogo.map(function(r){return r.voce;}), [
@@ -855,6 +874,20 @@ document.getElementById('btnSalvaBudget').addEventListener('click', async functi
   document.getElementById('budImporto').value='0';
   await loadAll();
   showToast('Budget salvato');
+});
+document.getElementById('btnClonaBudgetPrev').addEventListener('click', async function(){
+  if(!(isCampo() && String(activeChiesa && activeChiesa.id || '')===String(profile && profile.chiesa_id || ''))){ showToast('Solo tesoriere campo sul conto campo.'); return; }
+  var anno = Number(document.getElementById('budAnno').value) || new Date().getFullYear();
+  var prev = anno - 1;
+  var esisteAnno = cache.budgetAnnuali.some(function(b){ return Number(b.anno)===anno; });
+  if(esisteAnno){ showToast('Per questo anno esiste già un budget.'); return; }
+  var rowsPrev = cache.budgetAnnuali.filter(function(b){ return Number(b.anno)===prev; });
+  if(rowsPrev.length===0){ showToast('Nessun budget trovato per '+prev+'.'); return; }
+  var payload = rowsPrev.map(function(b){ return { chiesa_id:activeChiesa.id, anno:anno, categoria:b.categoria, voce:b.voce, importo_previsto:Number(b.importo_previsto||0), note:b.note||'' }; });
+  var { error } = await sb.from('budget_annuali').insert(payload);
+  if(error){ showToast('Errore clonazione budget.'); return; }
+  await loadAll();
+  showToast('Budget '+anno+' clonato da '+prev+'.');
 });
 
 /* ================= RICEVUTE ================= */
