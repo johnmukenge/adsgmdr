@@ -117,7 +117,7 @@
   .field-row{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   textarea{ resize:vertical; min-height:60px; }
   .righe-list{ border:1px solid var(--rule); border-radius:var(--radius); margin-bottom:8px; }
-  .riga{ display:grid; grid-template-columns:1fr 120px 180px 130px 34px; gap:8px; padding:8px; border-bottom:1px solid var(--rule); align-items:center; }
+  .riga{ display:grid; grid-template-columns:2.2fr 70px 180px 130px 34px; gap:8px; padding:8px; border-bottom:1px solid var(--rule); align-items:center; }
   .riga:last-child{ border-bottom:none; }
   .riga input{ padding:7px 9px; border:1px solid var(--rule); border-radius:4px; background:var(--bg); color:var(--ink); }
   .riga .del{ background:none; border:none; color:var(--red); cursor:pointer; font-size:16px; }
@@ -403,7 +403,7 @@
 </div>
 
 <!-- MODAL RICEVUTA -->
-<div class="modal-backdrop" id="modalRicevuta"><div class="modal">
+<div class="modal-backdrop" id="modalRicevuta"><div class="modal wide">
   <div class="modal-head"><h3 id="ricevutaTitolo">Nuova entrata</h3><button class="modal-close" data-close>✕</button></div>
   <div class="modal-body">
     <input type="hidden" id="ricevutaId"><input type="hidden" id="ricevutaTipo">
@@ -1013,18 +1013,22 @@ document.getElementById('btnNuovaUscitaSezione').addEventListener('click', funct
 function cassaOptionsHtml(selectedId){
   return '<option value="">Cassa…</option>' + cache.casse.map(function(c){ return '<option value="'+c.id+'"'+(selectedId===c.id?' selected':'')+'>'+esc(c.nome)+'</option>'; }).join('');
 }
-function tipoRigaOptionsHtml(selectedTipo){
-  return '<option value="entrata"'+(selectedTipo==='entrata'?' selected':'')+'>Entrata</option><option value="uscita"'+(selectedTipo==='uscita'?' selected':'')+'>Uscita</option>';
+function tipoToCode(tipo){ return tipo==='uscita' ? 'U' : 'E'; }
+function codeToTipo(code){ return String(code||'').toUpperCase()==='U' ? 'uscita' : 'entrata'; }
+function tipoRigaOptionsHtml(selectedCode){
+  var sc = String(selectedCode||'E').toUpperCase();
+  return '<option value="E"'+(sc==='E'?' selected':'')+'>E</option><option value="U"'+(sc==='U'?' selected':'')+'>U</option>';
 }
 function addRigaRow(desc, importo, cassaId, tipoRiga){
   if(desc==null) desc = '';
   if(importo==null) importo = '';
   if(!cassaId) cassaId = '';
   if(!tipoRiga) tipoRiga = (document.getElementById('ricevutaTipo').value || 'entrata');
+  var tipoCode = (tipoRiga==='E' || tipoRiga==='U') ? tipoRiga : tipoToCode(tipoRiga);
   var wrap = document.getElementById('righeList');
   var div = document.createElement('div'); div.className='riga';
   div.innerHTML = '<input type="text" class="riga-desc" placeholder="Descrizione" autocomplete="off" value="'+esc(desc)+'">'+
-    '<select class="riga-tipo">'+tipoRigaOptionsHtml(tipoRiga)+'</select>'+
+    '<select class="riga-tipo">'+tipoRigaOptionsHtml(tipoCode)+'</select>'+
     '<select class="riga-cassa">'+cassaOptionsHtml(cassaId)+'</select>'+
     '<input type="number" step="0.01" class="riga-importo" placeholder="0,00" autocomplete="off" value="'+importo+'">'+
     '<button type="button" class="del">✕</button>';
@@ -1038,7 +1042,7 @@ function ricalcolaTotale(){
   var t=0;
   document.querySelectorAll('#righeList .riga').forEach(function(row){
     var imp = Math.abs(Number(row.querySelector('.riga-importo').value)||0);
-    var tipoRiga = row.querySelector('.riga-tipo').value || tipoHeader;
+    var tipoRiga = codeToTipo(row.querySelector('.riga-tipo').value || tipoToCode(tipoHeader));
     var signed = (tipoRiga===tipoHeader ? imp : -imp);
     t += signed;
   });
@@ -1145,7 +1149,7 @@ document.getElementById('btnConfermaRicevuta').addEventListener('click', async f
   document.querySelectorAll('#righeList .riga').forEach(function(row){
     var desc = row.querySelector('.riga-desc').value.trim();
     var imp = Math.abs(Number(row.querySelector('.riga-importo').value)||0);
-    var tipoRiga = row.querySelector('.riga-tipo').value || tipoHeader;
+    var tipoRiga = codeToTipo(row.querySelector('.riga-tipo').value || tipoToCode(tipoHeader));
     var cassaRiga = row.querySelector('.riga-cassa').value || null;
     if(desc || imp){
       var signedImporto = (tipoRiga===tipoHeader ? imp : -imp);
