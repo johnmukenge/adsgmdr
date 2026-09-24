@@ -1162,7 +1162,7 @@ document.getElementById('btnConfermaRicevuta').addEventListener('click', async f
   var cassaUniche = Array.from(new Set(righe.map(function(x){ return x.cassa_id; }).filter(Boolean)));
   var cassaHeader = cassaUniche.length===1 ? cassaUniche[0] : null;
   var totaleNetto = righe.reduce(function(s,r){return s+Number(r.importo||0);},0);
-  if(Math.abs(totaleNetto)<=0){ showToast('Il totale deve essere diverso da zero'); return; }
+  if(totaleNetto<0){ showToast('Il totale della ricevuta non può essere negativo.'); return; }
   var totale = Math.abs(totaleNetto);
   if(tipo!=='entrata' && tipo!=='uscita'){ showToast('Tipo ricevuta non valido. Riapri il modulo.'); return; }
   if(!activeChiesa || !activeChiesa.id){ showToast('Chiesa non pronta. Attendi un secondo e riprova.'); return; }
