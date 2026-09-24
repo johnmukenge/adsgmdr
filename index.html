@@ -117,7 +117,7 @@
   .field-row{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   textarea{ resize:vertical; min-height:60px; }
   .righe-list{ border:1px solid var(--rule); border-radius:var(--radius); margin-bottom:8px; }
-  .riga{ display:grid; grid-template-columns:1fr 180px 130px 34px; gap:8px; padding:8px; border-bottom:1px solid var(--rule); align-items:center; }
+  .riga{ display:grid; grid-template-columns:1fr 120px 180px 130px 34px; gap:8px; padding:8px; border-bottom:1px solid var(--rule); align-items:center; }
   .riga:last-child{ border-bottom:none; }
   .riga input{ padding:7px 9px; border:1px solid var(--rule); border-radius:4px; background:var(--bg); color:var(--ink); }
   .riga .del{ background:none; border:none; color:var(--red); cursor:pointer; font-size:16px; }
@@ -411,7 +411,7 @@
     <div class="field"><label id="rNomeLabel">Contribuente</label><input type="text" id="rNome" list="anagraficheList"></div>
     <div class="field"><label>Deposito</label><select id="rDeposito"></select></div>
     <datalist id="anagraficheList"></datalist>
-    <div class="field"><label>Dettaglio righe (ogni riga con la propria cassa)</label><div class="righe-list" id="righeList"></div><button class="btn btn-sm" id="btnAggiungiRiga">+ Aggiungi riga</button></div>
+    <div class="field"><label>Dettaglio righe (ogni riga con tipo, cassa e importo)</label><div class="righe-list" id="righeList"></div><button class="btn btn-sm" id="btnAggiungiRiga">+ Aggiungi riga</button></div>
     <div class="totale-box"><span>Totale ricevuta</span><span class="num" id="rTotale">0,00 €</span></div>
     <div class="field"><label>Note</label><textarea id="rNote"></textarea></div>
   </div>
@@ -685,10 +685,23 @@ function renderAll(){
 }
 
 /* ================= DASHBOARD ================= */
+function oppositeTipo(tipo){ return tipo==='entrata' ? 'uscita' : 'entrata'; }
 function getRigheMovimento(r){
   var righe = (r.righe_ricevuta||[]).filter(function(x){ return Number(x.importo||0)!==0; });
   if(righe.length===0) return [{ descrizione:'', importo:Number(r.totale||0), cassa_id:r.cassa_id||null }];
   return righe.map(function(x){ return { descrizione:x.descrizione||'', importo:Number(x.importo||0), cassa_id:x.cassa_id||r.cassa_id||null }; });
+}
+function effettoRiga(ricevuta, riga){
+  var sign = (ricevuta.tipo==='entrata'?1:-1);
+  return sign * Number(riga.importo||0);
+}
+function totaliRicevutaEffettivi(r){
+  var entrate = 0, uscite = 0;
+  getRigheMovimento(r).forEach(function(x){
+    var eff = effettoRiga(r, x);
+    if(eff>=0) entrate += Math.abs(eff); else uscite += Math.abs(eff);
+  });
+  return { entrate:entrate, uscite:uscite, netto:entrate-uscite };
 }
 function ricevutaHasCassa(r, cassaId){ return getRigheMovimento(r).some(function(x){ return x.cassa_id===cassaId; }); }
 function cassaLabelRicevuta(r){
@@ -703,8 +716,7 @@ function cassaLabelRicevuta(r){
 function saldoCassa(cassaId){
   var t=0;
   cache.ricevute.forEach(function(r){
-    var sign = (r.tipo==='entrata'?1:-1);
-    getRigheMovimento(r).forEach(function(x){ if(x.cassa_id===cassaId) t += sign * Number(x.importo||0); });
+    getRigheMovimento(r).forEach(function(x){ if(x.cassa_id===cassaId) t += effettoRiga(r, x); });
   });
   return t;
 }
@@ -712,8 +724,7 @@ function saldoCassaPeriodo(cassaId, dal, al){
   var t=0;
   cache.ricevute.forEach(function(r){
     if((dal && r.data<dal) || (al && r.data>al)) return;
-    var sign = (r.tipo==='entrata'?1:-1);
-    getRigheMovimento(r).forEach(function(x){ if(x.cassa_id===cassaId) t += sign * Number(x.importo||0); });
+    getRigheMovimento(r).forEach(function(x){ if(x.cassa_id===cassaId) t += effettoRiga(r, x); });
   });
   return t;
 }
@@ -723,13 +734,13 @@ function totaliCassaPeriodo(cassaId, dal, al){
     if((dal && r.data<dal) || (al && r.data>al)) return;
     getRigheMovimento(r).forEach(function(x){
       if(x.cassa_id!==cassaId) return;
-      var v = Number(x.importo||0);
-      if(r.tipo==='entrata') entrate += v; else uscite += v;
+      var eff = effettoRiga(r, x);
+      if(eff>=0) entrate += Math.abs(eff); else uscite += Math.abs(eff);
     });
   });
   return { entrate:entrate, uscite:uscite, netto:entrate-uscite };
 }
-function saldoDeposito(depositoId){ var t=0; cache.ricevute.forEach(function(r){ if(r.deposito_id===depositoId) t += (r.tipo==='entrata'?1:-1)*Number(r.totale||0); }); return t; }
+function saldoDeposito(depositoId){ var t=0; cache.ricevute.forEach(function(r){ if(r.deposito_id===depositoId) getRigheMovimento(r).forEach(function(x){ t += effettoRiga(r,x); }); }); return t; }
 function saldoCampo(){ var t=0; cache.depositi.forEach(function(d){ t+=saldoDeposito(d.id); }); return t; }
 function isCurrentMonth(iso){ if(!iso) return false; var d=new Date(iso+"T00:00:00"), n=new Date(); return d.getFullYear()===n.getFullYear() && d.getMonth()===n.getMonth(); }
 
@@ -741,7 +752,12 @@ function ultimiMesi(n){
 function renderDashboard(){
   document.getElementById('statSaldo').textContent = fmtEUR(saldoCampo());
   var eM=0,uM=0;
-  cache.ricevute.forEach(function(r){ if(isCurrentMonth(r.data)){ if(r.tipo==='entrata') eM+=Number(r.totale)||0; else uM+=Number(r.totale)||0; } });
+  cache.ricevute.forEach(function(r){
+    if(!isCurrentMonth(r.data)) return;
+    var tr = totaliRicevutaEffettivi(r);
+    eM += tr.entrate;
+    uM += tr.uscite;
+  });
   document.getElementById('statEntrate').textContent = fmtEUR(eM);
   document.getElementById('statUscite').textContent = fmtEUR(uM);
   var ris = eM-uM; var box=document.getElementById('statRisultatoBox');
@@ -759,8 +775,12 @@ function renderDashboard(){
     }).join('');
 
   var mesi = ultimiMesi(6);
-  var entrateArr = mesi.map(function(mm){ return cache.ricevute.filter(function(r){ var d=new Date(r.data+"T00:00:00"); return r.tipo==='entrata' && d.getFullYear()===mm.y && d.getMonth()===mm.m; }).reduce(function(s,r){return s+Number(r.totale||0);},0); });
-  var usciteArr = mesi.map(function(mm){ return cache.ricevute.filter(function(r){ var d=new Date(r.data+"T00:00:00"); return r.tipo==='uscita' && d.getFullYear()===mm.y && d.getMonth()===mm.m; }).reduce(function(s,r){return s+Number(r.totale||0);},0); });
+  var entrateArr = mesi.map(function(mm){
+    return cache.ricevute.filter(function(r){ var d=new Date(r.data+"T00:00:00"); return d.getFullYear()===mm.y && d.getMonth()===mm.m; }).reduce(function(s,r){ return s + totaliRicevutaEffettivi(r).entrate; },0);
+  });
+  var usciteArr = mesi.map(function(mm){
+    return cache.ricevute.filter(function(r){ var d=new Date(r.data+"T00:00:00"); return d.getFullYear()===mm.y && d.getMonth()===mm.m; }).reduce(function(s,r){ return s + totaliRicevutaEffettivi(r).uscite; },0);
+  });
   var saldoArr=[]; var run=0;
   for(var i=0;i<mesi.length;i++){ run += entrateArr[i]-usciteArr[i]; saldoArr.push(run); }
 
@@ -787,8 +807,8 @@ function renderStatistiche(){
 
   var mesi = ultimiMesi(12);
   var labels = mesi.map(function(m){ return m.label; });
-  var entr = mesi.map(function(mm){ return list.filter(function(r){ var d=new Date(r.data+'T00:00:00'); return r.tipo==='entrata' && d.getFullYear()===mm.y && d.getMonth()===mm.m; }).reduce(function(s,r){ return s+Number(r.totale||0); },0); });
-  var usc = mesi.map(function(mm){ return list.filter(function(r){ var d=new Date(r.data+'T00:00:00'); return r.tipo==='uscita' && d.getFullYear()===mm.y && d.getMonth()===mm.m; }).reduce(function(s,r){ return s+Number(r.totale||0); },0); });
+  var entr = mesi.map(function(mm){ return list.filter(function(r){ var d=new Date(r.data+'T00:00:00'); return d.getFullYear()===mm.y && d.getMonth()===mm.m; }).reduce(function(s,r){ return s + totaliRicevutaEffettivi(r).entrate; },0); });
+  var usc = mesi.map(function(mm){ return list.filter(function(r){ var d=new Date(r.data+'T00:00:00'); return d.getFullYear()===mm.y && d.getMonth()===mm.m; }).reduce(function(s,r){ return s + totaliRicevutaEffettivi(r).uscite; },0); });
   drawChart('chartStatTrend','bar', labels, [
     {label:'Entrate', data:entr, backgroundColor:'#2F6F4F'},
     {label:'Uscite', data:usc, backgroundColor:'#A13D2C'}
@@ -812,7 +832,7 @@ function renderBudgetCampo(){
   var rows = cache.budgetAnnuali.filter(function(b){ return Number(b.anno)===anno; });
   var daAnno = anno+'-01-01';
   var aAnno = anno+'-12-31';
-  var usciteAnno = cache.ricevute.filter(function(r){ return r.tipo==='uscita' && r.data>=daAnno && r.data<=aAnno; });
+  var usciteAnno = cache.ricevute.filter(function(r){ return r.data>=daAnno && r.data<=aAnno; });
   var hintEl = document.getElementById('budgetHint');
   var summaryEl = document.getElementById('budgetSummary');
 
@@ -833,7 +853,8 @@ function renderBudgetCampo(){
       getRigheMovimento(r).forEach(function(x){
         var cassa = cache.casse.find(function(c){ return c.id===x.cassa_id; });
         var cn = String(cassa && cassa.nome || '').toLowerCase();
-        if(cn===voce || rn===voce) speso += Number(x.importo||0);
+        var eff = effettoRiga(r, x);
+        if(eff<0 && (cn===voce || rn===voce)) speso += Math.abs(eff);
       });
     });
     var budget = Number(b.importo_previsto||0);
@@ -992,22 +1013,39 @@ document.getElementById('btnNuovaUscitaSezione').addEventListener('click', funct
 function cassaOptionsHtml(selectedId){
   return '<option value="">Cassa…</option>' + cache.casse.map(function(c){ return '<option value="'+c.id+'"'+(selectedId===c.id?' selected':'')+'>'+esc(c.nome)+'</option>'; }).join('');
 }
-function addRigaRow(desc, importo, cassaId){
+function tipoRigaOptionsHtml(selectedTipo){
+  return '<option value="entrata"'+(selectedTipo==='entrata'?' selected':'')+'>Entrata</option><option value="uscita"'+(selectedTipo==='uscita'?' selected':'')+'>Uscita</option>';
+}
+function addRigaRow(desc, importo, cassaId, tipoRiga){
   if(desc==null) desc = '';
   if(importo==null) importo = '';
   if(!cassaId) cassaId = '';
+  if(!tipoRiga) tipoRiga = (document.getElementById('ricevutaTipo').value || 'entrata');
   var wrap = document.getElementById('righeList');
   var div = document.createElement('div'); div.className='riga';
   div.innerHTML = '<input type="text" class="riga-desc" placeholder="Descrizione" autocomplete="off" value="'+esc(desc)+'">'+
+    '<select class="riga-tipo">'+tipoRigaOptionsHtml(tipoRiga)+'</select>'+
     '<select class="riga-cassa">'+cassaOptionsHtml(cassaId)+'</select>'+
     '<input type="number" step="0.01" class="riga-importo" placeholder="0,00" autocomplete="off" value="'+importo+'">'+
     '<button type="button" class="del">✕</button>';
   wrap.appendChild(div);
   div.querySelector('.del').addEventListener('click', function(){ div.remove(); ricalcolaTotale(); });
   div.querySelector('.riga-importo').addEventListener('input', ricalcolaTotale);
+  div.querySelector('.riga-tipo').addEventListener('change', ricalcolaTotale);
 }
-function ricalcolaTotale(){ var t=0; document.querySelectorAll('#righeList .riga-importo').forEach(function(i){t+=Number(i.value)||0;}); document.getElementById('rTotale').textContent=fmtEUR(t); return t; }
-document.getElementById('btnAggiungiRiga').addEventListener('click', function(){ addRigaRow('', '', ''); });
+function ricalcolaTotale(){
+  var tipoHeader = (document.getElementById('ricevutaTipo').value||'entrata');
+  var t=0;
+  document.querySelectorAll('#righeList .riga').forEach(function(row){
+    var imp = Math.abs(Number(row.querySelector('.riga-importo').value)||0);
+    var tipoRiga = row.querySelector('.riga-tipo').value || tipoHeader;
+    var signed = (tipoRiga===tipoHeader ? imp : -imp);
+    t += signed;
+  });
+  document.getElementById('rTotale').textContent=fmtEUR(Math.abs(t));
+  return t;
+}
+document.getElementById('btnAggiungiRiga').addEventListener('click', function(){ addRigaRow('', '', '', document.getElementById('ricevutaTipo').value || 'entrata'); });
 
 function resetFormRicevuta(tipo){
   document.getElementById('ricevutaId').value = '';
@@ -1018,7 +1056,7 @@ function resetFormRicevuta(tipo){
   document.getElementById('rDeposito').value = '';
   document.getElementById('rNote').value = '';
   document.getElementById('righeList').innerHTML='';
-  addRigaRow('', '', '');
+  addRigaRow('', '', '', tipo || 'entrata');
   ricalcolaTotale();
 }
 
@@ -1048,7 +1086,12 @@ function apriModaleRicevuta(tipo, existing){
     document.getElementById('rDeposito').value = existing.deposito_id || '';
     document.getElementById('rNote').value = existing.note || '';
     var righe = existing.righe_ricevuta || [];
-    if(righe.length===0) addRigaRow('', existing.totale, existing.cassa_id||''); else righe.forEach(function(rg){ addRigaRow(rg.descrizione, rg.importo, rg.cassa_id || existing.cassa_id || ''); });
+    if(righe.length===0) addRigaRow('', existing.totale, existing.cassa_id||'', existing.tipo||'entrata');
+    else righe.forEach(function(rg){
+      var impRaw = Number(rg.importo||0);
+      var tipoRiga = impRaw>=0 ? existing.tipo : oppositeTipo(existing.tipo);
+      addRigaRow(rg.descrizione, Math.abs(impRaw), rg.cassa_id || existing.cassa_id || '', tipoRiga);
+    });
   }
   ricalcolaTotale();
   openModal('modalRicevuta');
@@ -1098,31 +1141,41 @@ document.getElementById('btnConfermaRicevuta').addEventListener('click', async f
   if(!nome){ showToast('Inserisci un nome'); return; }
   if(!depositoId){ showToast('Seleziona un deposito'); return; }
   var righe = [];
+  var tipoHeader = tipo;
   document.querySelectorAll('#righeList .riga').forEach(function(row){
     var desc = row.querySelector('.riga-desc').value.trim();
-    var imp = Number(row.querySelector('.riga-importo').value)||0;
+    var imp = Math.abs(Number(row.querySelector('.riga-importo').value)||0);
+    var tipoRiga = row.querySelector('.riga-tipo').value || tipoHeader;
     var cassaRiga = row.querySelector('.riga-cassa').value || null;
     if(desc || imp){
-      if(!cassaRiga){ righe.push({descrizione:desc, importo:imp, cassa_id:null}); return; }
-      righe.push({descrizione:desc, importo:imp, cassa_id:cassaRiga});
+      var signedImporto = (tipoRiga===tipoHeader ? imp : -imp);
+      if(!cassaRiga){ righe.push({descrizione:desc, importo:signedImporto, cassa_id:null}); return; }
+      righe.push({descrizione:desc, importo:signedImporto, cassa_id:cassaRiga});
     }
   });
   if(righe.length===0){ showToast('Inserisci almeno una riga valida'); return; }
   if(righe.some(function(x){ return !x.cassa_id; })){ showToast('Ogni riga deve avere una cassa.'); return; }
   var cassaUniche = Array.from(new Set(righe.map(function(x){ return x.cassa_id; }).filter(Boolean)));
   var cassaHeader = cassaUniche.length===1 ? cassaUniche[0] : null;
-  var totale = righe.reduce(function(s,r){return s+Number(r.importo||0);},0);
-  if(totale<=0){ showToast('Il totale deve essere maggiore di zero'); return; }
+  var totaleNetto = righe.reduce(function(s,r){return s+Number(r.importo||0);},0);
+  if(Math.abs(totaleNetto)<=0){ showToast('Il totale deve essere diverso da zero'); return; }
+  var totale = Math.abs(totaleNetto);
   if(tipo!=='entrata' && tipo!=='uscita'){ showToast('Tipo ricevuta non valido. Riapri il modulo.'); return; }
   if(!activeChiesa || !activeChiesa.id){ showToast('Chiesa non pronta. Attendi un secondo e riprova.'); return; }
 
   savingRicevuta = true;
   setRicevutaSaving(true);
+  var salvata = false;
   try{
     if(id){
-      await sb.from('ricevute').update({ data:data, nome:nome, cassa_id:cassaHeader, deposito_id:depositoId, totale:totale, note:note }).eq('id', id);
-      await sb.from('righe_ricevuta').delete().eq('ricevuta_id', id);
-      await sb.from('righe_ricevuta').insert(righe.map(function(r){ return { ricevuta_id:id, descrizione:r.descrizione, importo:r.importo, cassa_id:r.cassa_id }; }));
+      var upRes = await sb.from('ricevute').update({ data:data, nome:nome, cassa_id:cassaHeader, deposito_id:depositoId, totale:totale, note:note }).eq('id', id);
+      if(upRes.error){ showToast('Errore aggiornamento ricevuta'); return; }
+
+      var delRes = await sb.from('righe_ricevuta').delete().eq('ricevuta_id', id);
+      if(delRes.error){ showToast('Errore aggiornamento righe ricevuta'); return; }
+
+      var insRigheRes = await sb.from('righe_ricevuta').insert(righe.map(function(r){ return { ricevuta_id:id, descrizione:r.descrizione, importo:r.importo, cassa_id:r.cassa_id }; }));
+      if(insRigheRes.error){ showToast('Errore salvataggio righe ricevuta'); return; }
     } else {
       var numeroGen = null, errNum = null;
       for(var tentativo=1; tentativo<=2; tentativo++){
@@ -1141,14 +1194,18 @@ document.getElementById('btnConfermaRicevuta').addEventListener('click', async f
         cassa_id: cassaHeader, deposito_id: depositoId, totale: totale, note: note
       }).select().single();
       if(errIns){ showToast('Errore nel salvataggio'); return; }
-      await sb.from('righe_ricevuta').insert(righe.map(function(r){ return { ricevuta_id:nuova.id, descrizione:r.descrizione, importo:r.importo, cassa_id:r.cassa_id }; }));
-      await ensureAnagrafica(nome, tipo==='entrata'?'ospite':'fornitore');
+
+      var insRigheNewRes = await sb.from('righe_ricevuta').insert(righe.map(function(r){ return { ricevuta_id:nuova.id, descrizione:r.descrizione, importo:r.importo, cassa_id:r.cassa_id }; }));
+      if(insRigheNewRes.error){ showToast('Errore salvataggio righe ricevuta'); return; }
+
+      try{ await ensureAnagrafica(nome, tipo==='entrata'?'ospite':'fornitore'); }catch(_e){}
     }
+    salvata = true;
     closeModal('modalRicevuta');
-    await loadAll();
+    try{ await loadAll(); }catch(_e){}
     showToast('Ricevuta salvata');
   }catch(e){
-    showToast('Errore nel salvataggio');
+    showToast(salvata ? 'Ricevuta salvata (aggiornamento schermata non completo)' : 'Errore nel salvataggio');
   }finally{
     savingRicevuta = false;
     setRicevutaSaving(false);
@@ -1402,8 +1459,8 @@ document.getElementById('btnAcquisisciReportCampo').addEventListener('click', as
   if(!f) return;
   var dal = f.dal, al = f.al;
   var ric = cache.ricevute.filter(function(r){ return (!dal || r.data>=dal) && (!al || r.data<=al); });
-  var entrate = ric.filter(function(r){return r.tipo==='entrata';}).reduce(function(s,r){return s+Number(r.totale||0);},0);
-  var uscite = ric.filter(function(r){return r.tipo==='uscita';}).reduce(function(s,r){return s+Number(r.totale||0);},0);
+  var entrate = ric.reduce(function(s,r){ return s + totaliRicevutaEffettivi(r).entrate; },0);
+  var uscite = ric.reduce(function(s,r){ return s + totaliRicevutaEffettivi(r).uscite; },0);
   var netto = entrate-uscite;
   if(!netto){ showToast('Nessun netto da acquisire nel periodo selezionato.'); return; }
 
