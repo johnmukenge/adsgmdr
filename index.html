@@ -1038,20 +1038,26 @@ function tipoRigaOptionsHtml(selectedCode){
   var sc = String(selectedCode||'E').toUpperCase();
   return '<option value="E"'+(sc==='E'?' selected':'')+'>E</option><option value="U"'+(sc==='U'?' selected':'')+'>U</option>';
 }
-function addRigaRow(desc, importo, cassaId, tipoRiga){
+function addRigaRow(desc, importo, cassaId, tipoRiga, forceBlank){
   if(desc==null) desc = '';
   if(importo==null) importo = '';
   if(!cassaId) cassaId = '';
   if(!tipoRiga) tipoRiga = (document.getElementById('ricevutaTipo').value || 'entrata');
   var tipoCode = (tipoRiga==='E' || tipoRiga==='U') ? tipoRiga : tipoToCode(tipoRiga);
+  var uid = String(Date.now()) + String(Math.floor(Math.random()*100000));
   var wrap = document.getElementById('righeList');
   var div = document.createElement('div'); div.className='riga';
-  div.innerHTML = '<input type="text" class="riga-desc" placeholder="Descrizione" autocomplete="off" value="'+esc(desc)+'">'+
+  div.innerHTML = '<input type="text" class="riga-desc" name="riga-desc-'+uid+'" placeholder="Descrizione" autocomplete="new-password" autocorrect="off" autocapitalize="none" spellcheck="false" value="'+esc(desc)+'">'+
     '<select class="riga-tipo">'+tipoRigaOptionsHtml(tipoCode)+'</select>'+
     '<select class="riga-cassa">'+cassaOptionsHtml(cassaId)+'</select>'+
-    '<input type="number" step="0.01" class="riga-importo" placeholder="0,00" autocomplete="off" value="'+importo+'">'+
+    '<input type="number" step="0.01" class="riga-importo" name="riga-importo-'+uid+'" placeholder="0,00" autocomplete="new-password" value="'+importo+'">'+
     '<button type="button" class="del">✕</button>';
   wrap.appendChild(div);
+  if(forceBlank){
+    div.querySelector('.riga-desc').value = '';
+    div.querySelector('.riga-cassa').value = '';
+    div.querySelector('.riga-importo').value = '';
+  }
   div.querySelector('.del').addEventListener('click', function(){ div.remove(); ricalcolaTotale(); });
   div.querySelector('.riga-importo').addEventListener('input', ricalcolaTotale);
   div.querySelector('.riga-tipo').addEventListener('change', ricalcolaTotale);
@@ -1068,7 +1074,7 @@ function ricalcolaTotale(){
   document.getElementById('rTotale').textContent=fmtEUR(Math.abs(t));
   return t;
 }
-document.getElementById('btnAggiungiRiga').addEventListener('click', function(){ addRigaRow('', '', '', document.getElementById('ricevutaTipo').value || 'entrata'); });
+document.getElementById('btnAggiungiRiga').addEventListener('click', function(){ addRigaRow('', '', '', document.getElementById('ricevutaTipo').value || 'entrata', true); });
 
 function resetFormRicevuta(tipo){
   document.getElementById('ricevutaId').value = '';
@@ -1079,7 +1085,7 @@ function resetFormRicevuta(tipo){
   document.getElementById('rDeposito').value = '';
   document.getElementById('rNote').value = '';
   document.getElementById('righeList').innerHTML='';
-  addRigaRow('', '', '', tipo || 'entrata');
+  addRigaRow('', '', '', tipo || 'entrata', true);
   ricalcolaTotale();
 }
 
