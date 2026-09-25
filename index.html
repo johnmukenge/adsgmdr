@@ -1312,13 +1312,15 @@ function computeReportData(){
   var destinazione = getDestinazioneReport();
   var mapPerc = getPercentualiEffettive(destinazione, al||todayISO());
   var hasMap = Object.keys(mapPerc).length>0;
-  var casseScope = hasMap ? cache.casse.filter(function(c){ return mapPerc[c.id]!=null; }) : cache.casse;
+  var casseScope = cache.casse;
   var righe = casseScope.map(function(c){
     var tot = totaliCassaPeriodo(c.id, dal, al);
     var entrate = tot.entrate;
     var uscite = tot.uscite;
     var netto = tot.netto;
-    var perc = hasMap ? Number(mapPerc[c.id]||0) : Number(c.percentuale_cg||0);
+    var perc = hasMap
+      ? (mapPerc[c.id]!=null ? Number(mapPerc[c.id]||0) : 0)
+      : Number(c.percentuale_cg||0);
     var quota = entrate * perc / 100;
     return { cassa_id:c.id, nome:c.nome, entrate:entrate, uscite:uscite, netto:netto, perc:perc, quota:quota };
   });
