@@ -65,6 +65,9 @@
   .topbar h1{ font-size:18px; flex:0 0 auto; }
   .chiesa-select{ padding:7px 10px; border:1px solid var(--rule); border-radius:var(--radius); background:var(--bg); color:var(--ink); }
   .badge-readonly{ display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:20px; background:var(--red-tint); color:var(--red); font-size:11.5px; font-weight:600; }
+  .badge-sync{ display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:20px; background:var(--surface-2); color:var(--ink-soft); font-size:11.5px; font-weight:600; }
+  .badge-sync.warn{ background:#FFF3D6; color:#8A5B00; }
+  .badge-sync.ok{ background:var(--green-tint); color:var(--green-dark); }
   .topbar-right{ margin-left:auto; display:flex; align-items:center; gap:10px; }
   .content{ padding:26px 28px 60px; max-width:1100px; }
   .section{ display:none; } .section.active{ display:block; }
@@ -197,6 +200,7 @@
       <h1 id="topTitle">Dashboard</h1>
       <div class="topbar-right">
         <select class="chiesa-select" id="chiesaSelect" style="display:none;"></select>
+        <span class="badge-sync" id="syncBadge" style="display:none;">🔄 Sync</span>
         <span class="badge-readonly" id="readonlyBadge" style="display:none;">🔒 Sola lettura</span>
       </div>
     </div>
@@ -374,6 +378,7 @@
               <button class="btn btn-primary" id="btnEsportaJson">💾 Esporta JSON</button>
               <button class="btn btn-primary" id="btnEsportaXlsx">📊 Esporta Excel</button>
               <button class="btn" id="btnImportaXlsx">📥 Importa da Excel (legacy)</button>
+              <button class="btn" id="btnSyncNow">🔄 Sincronizza ora</button>
               <input type="file" id="fileImportaXlsx" accept=".xlsx,.xls,.csv" style="display:none">
             </div>
           </div>
@@ -413,6 +418,7 @@
     <datalist id="anagraficheList"></datalist>
     <div class="field"><label>Dettaglio righe (ogni riga con tipo, cassa e importo)</label><div class="righe-list" id="righeList"></div><button class="btn btn-sm" id="btnAggiungiRiga">+ Aggiungi riga</button></div>
     <div class="totale-box"><span>Totale ricevuta</span><span class="num" id="rTotale">0,00 €</span></div>
+    <div class="field"><label>Allegati (scanner/foto/PDF)</label><input type="file" id="rAllegati" accept="image/*,application/pdf" multiple><p class="hint">Se sei offline, gli allegati vengono messi in coda e caricati appena torni online.</p></div>
     <div class="field"><label>Note</label><textarea id="rNote"></textarea></div>
   </div>
   <div class="modal-foot">
@@ -523,11 +529,32 @@ var canWrite = false;
 var cache = { casse:[], depositi:[], ricevute:[], anagrafiche:[], beni:[], budgetAnnuali:[], percentualiReport:[] };
 var charts = {};
 var realtimeChannel = null;
+var offlineDb = null;
+var syncInProgress = false;
+var OFFLINE_DB_NAME = 'adsgmdr_offline_v1';
+var OFFLINE_DB_VERSION = 1;
+var OFFLINE_OPS_STORE = 'offline_ops';
+var OFFLINE_RECEIPTS_STORE = 'offline_receipts';
+var DEVICE_ID_KEY = 'adsgmdr_device_id';
+var MAX_SYNC_RETRY = 8;
 
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function fmtEUR(n){ n=Number(n)||0; return n.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; }
 function fmtDate(iso){ if(!iso) return ""; var p=iso.split("-"); return p.length===3 ? p[2]+"/"+p[1]+"/"+p[0] : iso; }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
+function isOnline(){ return navigator.onLine!==false; }
+function uuid4(){
+  if(window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
+    var r = Math.random()*16|0, v = c==='x' ? r : (r&0x3|0x8);
+    return v.toString(16);
+  });
+}
+function getDeviceId(){
+  var id = localStorage.getItem(DEVICE_ID_KEY);
+  if(!id){ id = uuid4(); localStorage.setItem(DEVICE_ID_KEY, id); }
+  return id;
+}
 function showToast(msg){ var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(function(){t.classList.remove('show');},2600); }
 function openModal(id){ document.getElementById(id).classList.add('open'); }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
@@ -535,6 +562,320 @@ document.querySelectorAll('.modal-backdrop').forEach(function(bd){
   bd.addEventListener('click', function(e){ if(e.target===bd) bd.classList.remove('open'); });
   bd.querySelectorAll('[data-close]').forEach(function(b){ b.addEventListener('click', function(){ bd.classList.remove('open'); }); });
 });
+
+/* ================= OFFLINE QUEUE (IndexedDB) ================= */
+function openOfflineDb(){
+  if(offlineDb) return Promise.resolve(offlineDb);
+  return new Promise(function(resolve, reject){
+    if(!window.indexedDB){ resolve(null); return; }
+    var req = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
+    req.onupgradeneeded = function(ev){
+      var db = ev.target.result;
+      if(!db.objectStoreNames.contains(OFFLINE_OPS_STORE)){
+        var ops = db.createObjectStore(OFFLINE_OPS_STORE, { keyPath:'id' });
+        ops.createIndex('by_chiesa', 'chiesa_id', { unique:false });
+      }
+      if(!db.objectStoreNames.contains(OFFLINE_RECEIPTS_STORE)){
+        var rec = db.createObjectStore(OFFLINE_RECEIPTS_STORE, { keyPath:'local_id' });
+        rec.createIndex('by_chiesa', 'chiesa_id', { unique:false });
+      }
+    };
+    req.onsuccess = function(){ offlineDb = req.result; resolve(offlineDb); };
+    req.onerror = function(){ reject(req.error); };
+  });
+}
+function idbAll(storeName){
+  return openOfflineDb().then(function(db){
+    if(!db) return [];
+    return new Promise(function(resolve, reject){
+      var tx = db.transaction(storeName, 'readonly');
+      var req = tx.objectStore(storeName).getAll();
+      req.onsuccess = function(){ resolve(req.result || []); };
+      req.onerror = function(){ reject(req.error); };
+    });
+  });
+}
+function idbGet(storeName, key){
+  return openOfflineDb().then(function(db){
+    if(!db) return null;
+    return new Promise(function(resolve, reject){
+      var tx = db.transaction(storeName, 'readonly');
+      var req = tx.objectStore(storeName).get(key);
+      req.onsuccess = function(){ resolve(req.result || null); };
+      req.onerror = function(){ reject(req.error); };
+    });
+  });
+}
+function idbPut(storeName, value){
+  return openOfflineDb().then(function(db){
+    if(!db) return null;
+    return new Promise(function(resolve, reject){
+      var tx = db.transaction(storeName, 'readwrite');
+      tx.objectStore(storeName).put(value);
+      tx.oncomplete = function(){ resolve(value); };
+      tx.onerror = function(){ reject(tx.error); };
+    });
+  });
+}
+function idbDelete(storeName, key){
+  return openOfflineDb().then(function(db){
+    if(!db) return null;
+    return new Promise(function(resolve, reject){
+      var tx = db.transaction(storeName, 'readwrite');
+      tx.objectStore(storeName).delete(key);
+      tx.oncomplete = function(){ resolve(true); };
+      tx.onerror = function(){ reject(tx.error); };
+    });
+  });
+}
+async function getOfflineReceiptsByChiesa(chiesaId){
+  if(!chiesaId) return [];
+  var all = await idbAll(OFFLINE_RECEIPTS_STORE);
+  return all.filter(function(x){ return String(x.chiesa_id)===String(chiesaId); });
+}
+async function removeOfflineReceipt(localId){
+  await idbDelete(OFFLINE_RECEIPTS_STORE, localId);
+  await idbDelete(OFFLINE_OPS_STORE, localId);
+}
+function buildOfflineNumero(localId, tipo){
+  return 'TMP-'+todayISO().replace(/-/g,'')+'-'+String(tipo||'E').charAt(0).toUpperCase()+'-'+String(localId).slice(0,8);
+}
+function offlineDraftToCache(d){
+  return {
+    id: 'offline:'+d.local_id,
+    numero: d.numero_temp,
+    tipo: d.tipo,
+    data: d.data,
+    nome: d.nome,
+    cassa_id: d.cassa_id || null,
+    deposito_id: d.deposito_id || null,
+    totale: Number(d.totale||0),
+    note: d.note || '',
+    righe_ricevuta: (d.righe||[]).map(function(r){ return { descrizione:r.descrizione, importo:r.importo, cassa_id:r.cassa_id }; }),
+    _offline: true,
+    offline_creato_il: d.offline_creato_il
+  };
+}
+async function mergeOfflineDraftsIntoCache(){
+  if(!activeChiesa || !activeChiesa.id) return;
+  var drafts = await getOfflineReceiptsByChiesa(activeChiesa.id);
+  if(!drafts.length) return;
+  var mapped = drafts.map(offlineDraftToCache);
+  var existingIds = new Set(cache.ricevute.map(function(r){ return String(r.id); }));
+  mapped.forEach(function(r){ if(!existingIds.has(String(r.id))) cache.ricevute.unshift(r); });
+  cache.ricevute.sort(function(a,b){ return String(b.data||'').localeCompare(String(a.data||'')); });
+}
+async function queueOfflineReceipt(payload){
+  var localId = uuid4();
+  var draft = {
+    local_id: localId,
+    chiesa_id: payload.chiesa_id,
+    tipo: payload.tipo,
+    data: payload.data,
+    nome: payload.nome,
+    cassa_id: payload.cassa_id || null,
+    deposito_id: payload.deposito_id || null,
+    totale: Number(payload.totale||0),
+    note: payload.note || '',
+    righe: payload.righe || [],
+    attachments: payload.attachments || [],
+    offline_creato_il: new Date().toISOString(),
+    numero_temp: buildOfflineNumero(localId, payload.tipo==='entrata'?'E':'U')
+  };
+  await idbPut(OFFLINE_RECEIPTS_STORE, draft);
+  await idbPut(OFFLINE_OPS_STORE, {
+    id: localId,
+    action: 'create_ricevuta',
+    chiesa_id: payload.chiesa_id,
+    created_at: new Date().toISOString(),
+    retry_count: 0,
+    next_retry_at: null,
+    last_error: null,
+    payload: draft
+  });
+  updateSyncBadge();
+  return draft;
+}
+function syncRetryDelayMs(retryCount){
+  var n = Number(retryCount||0);
+  return Math.min(10*60*1000, Math.pow(2, n) * 5000);
+}
+function sanitizeFileName(name){
+  return String(name||'file').replace(/[^a-zA-Z0-9._-]+/g,'_');
+}
+function dataUrlToBlob(dataUrl){
+  var parts = String(dataUrl||'').split(',');
+  if(parts.length<2) return null;
+  var m = (parts[0].match(/data:([^;]+);base64/)||[])[1] || 'application/octet-stream';
+  var bin = atob(parts[1]);
+  var len = bin.length;
+  var arr = new Uint8Array(len);
+  for(var i=0;i<len;i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type:m });
+}
+function fileToDataUrl(file){
+  return new Promise(function(resolve, reject){
+    var fr = new FileReader();
+    fr.onload = function(){ resolve(fr.result); };
+    fr.onerror = function(){ reject(fr.error); };
+    fr.readAsDataURL(file);
+  });
+}
+async function filesToOfflineAttachments(fileList){
+  var files = Array.from(fileList||[]);
+  var out = [];
+  for(var i=0;i<files.length;i++){
+    var f = files[i];
+    var dataUrl = await fileToDataUrl(f);
+    out.push({ name:f.name, type:f.type||'application/octet-stream', size:f.size||0, data_url:dataUrl });
+  }
+  return out;
+}
+async function uploadAttachmentsOnline(ricevutaId, chiesaId, attachments){
+  if(!attachments || !attachments.length) return 0;
+  var uploaded = 0;
+  for(var i=0;i<attachments.length;i++){
+    var a = attachments[i];
+    var blob = null;
+    var fileName = sanitizeFileName(a.name || ('allegato_'+(i+1)));
+    if(a.data_url){ blob = dataUrlToBlob(a.data_url); }
+    else if(a.file instanceof File){ blob = a.file; }
+    if(!blob) continue;
+    var path = chiesaId+'/'+ricevutaId+'/'+Date.now()+'_'+i+'_'+fileName;
+    var up = await sb.storage.from('ricevute-allegati').upload(path, blob, { contentType: a.type || blob.type || 'application/octet-stream', upsert:false });
+    if(up.error) throw up.error;
+    var ins = await sb.from('ricevute_allegati').insert({
+      chiesa_id: chiesaId,
+      ricevuta_id: ricevutaId,
+      storage_path: path,
+      nome_file: fileName,
+      mime_type: a.type || blob.type || null,
+      size_bytes: Number(a.size || blob.size || 0),
+      source: 'upload'
+    });
+    if(ins.error) throw ins.error;
+    uploaded++;
+  }
+  return uploaded;
+}
+async function logSync(esito, op, messaggio){
+  if(!activeChiesa || !activeChiesa.id) return;
+  try{
+    await sb.from('sync_operazioni').insert({
+      chiesa_id: activeChiesa.id,
+      device_id: getDeviceId(),
+      op_type: op && op.action ? op.action : 'unknown',
+      payload: op ? { id:op.id, created_at:op.created_at, retry_count:op.retry_count } : null,
+      esito: esito,
+      messaggio: messaggio || null
+    });
+  }catch(_e){}
+}
+async function scheduleOpRetry(op, errMsg){
+  var retry = Number(op.retry_count||0) + 1;
+  var delay = syncRetryDelayMs(retry);
+  var next = new Date(Date.now()+delay).toISOString();
+  op.retry_count = retry;
+  op.next_retry_at = next;
+  op.last_error = String(errMsg||'sync error').slice(0,500);
+  await idbPut(OFFLINE_OPS_STORE, op);
+  await logSync(retry>MAX_SYNC_RETRY?'conflict':'error', op, op.last_error);
+}
+function updateSyncBadge(){
+  var el = document.getElementById('syncBadge');
+  if(!el) return;
+  if(!activeChiesa || !activeChiesa.id){ el.style.display='none'; return; }
+  idbAll(OFFLINE_OPS_STORE).then(function(all){
+    var pending = (all||[]).filter(function(op){ return op && op.action==='create_ricevuta' && String(op.chiesa_id)===String(activeChiesa.id); });
+    var n = pending.length;
+    var online = isOnline();
+    el.classList.remove('warn','ok');
+    if(syncInProgress){
+      el.style.display = 'inline-flex';
+      el.textContent = '🔄 Sync in corso';
+      return;
+    }
+    if(!online){
+      el.style.display = 'inline-flex';
+      el.classList.add('warn');
+      el.textContent = '📴 Offline' + (n>0 ? ' · '+n+' in coda' : '');
+      return;
+    }
+    if(n>0){
+      el.style.display = 'inline-flex';
+      el.classList.add('warn');
+      el.textContent = '🕓 '+n+' in coda';
+      return;
+    }
+    el.style.display = 'inline-flex';
+    el.classList.add('ok');
+    el.textContent = '✅ Sync ok';
+  }).catch(function(){ el.style.display='none'; });
+}
+async function syncOfflineQueue(){
+  if(syncInProgress || !isOnline() || !activeChiesa || !activeChiesa.id || !canWrite) return;
+  syncInProgress = true;
+  updateSyncBadge();
+  try{
+    var ops = await idbAll(OFFLINE_OPS_STORE);
+    var nowIso = new Date().toISOString();
+    var pending = ops.filter(function(op){
+      if(!(op && op.action==='create_ricevuta' && String(op.chiesa_id)===String(activeChiesa.id))) return false;
+      if(op.next_retry_at && String(op.next_retry_at) > nowIso) return false;
+      return true;
+    });
+    if(!pending.length) return;
+    pending.sort(function(a,b){ return String(a.created_at||'').localeCompare(String(b.created_at||'')); });
+    var synced = 0;
+    for(var i=0;i<pending.length;i++){
+      var op = pending[i];
+      var p = op.payload || {};
+      try{
+        var res = await sb.rpc('crea_ricevuta_da_sync', {
+          p_chiesa_id: p.chiesa_id,
+          p_tipo: p.tipo,
+          p_data: p.data,
+          p_nome: p.nome,
+          p_deposito_id: p.deposito_id,
+          p_note: p.note,
+          p_source_device_id: getDeviceId(),
+          p_source_local_id: p.local_id,
+          p_inserito_offline: true,
+          p_offline_creato_il: p.offline_creato_il
+        });
+        if(res.error || !res.data) throw (res.error || new Error('Sync RPC senza risultato'));
+        var ricevutaId = res.data;
+        await sb.from('righe_ricevuta').delete().eq('ricevuta_id', ricevutaId);
+        if((p.righe||[]).length){
+          var ir = await sb.from('righe_ricevuta').insert((p.righe||[]).map(function(r){
+            return { ricevuta_id:ricevutaId, descrizione:r.descrizione||'', importo:Number(r.importo||0), cassa_id:r.cassa_id||null };
+          }));
+          if(ir.error) throw ir.error;
+        }
+        if((p.attachments||[]).length){
+          await uploadAttachmentsOnline(ricevutaId, p.chiesa_id, p.attachments);
+        }
+        try{ await ensureAnagrafica(p.nome, p.tipo==='entrata'?'ospite':'fornitore'); }catch(_e){}
+        await removeOfflineReceipt(p.local_id);
+        await logSync('ok', op, 'Ricevuta sincronizzata');
+        synced++;
+      }catch(e){
+        await scheduleOpRetry(op, e && (e.message || e.details || String(e)));
+      }
+    }
+    if(synced>0){
+      showToast('Sincronizzate '+synced+' ricevute offline.');
+      await loadAll();
+    }
+  }catch(e){
+    showToast('Sync offline non completata. Riproverò alla prossima connessione.');
+  }finally{
+    syncInProgress = false;
+    updateSyncBadge();
+  }
+}
+window.addEventListener('online', function(){ updateSyncBadge(); syncOfflineQueue(); });
+window.addEventListener('offline', function(){ updateSyncBadge(); });
 
 /* ================= AUTH ================= */
 async function initAuth(){
@@ -625,35 +966,43 @@ async function setActiveChiesa(chiesaId){
   if(realtimeChannel) sb.removeChannel(realtimeChannel);
   await loadAll();
   subscribeRealtime();
+  await syncOfflineQueue();
+  updateSyncBadge();
 }
 
 /* ================= CARICAMENTO DATI ================= */
 async function loadAll(){
   var cid = activeChiesa.id;
-  var [c1,c2,c3,c4,c5] = await Promise.all([
-    sb.from('casse').select('*').eq('chiesa_id', cid).order('nome'),
-    sb.from('depositi').select('*').eq('chiesa_id', cid).order('nome'),
-    sb.from('ricevute').select('*, righe_ricevuta(*)').eq('chiesa_id', cid).order('data', {ascending:false}),
-    sb.from('anagrafiche').select('*').eq('chiesa_id', cid).order('nome'),
-    sb.from('beni').select('*').eq('chiesa_id', cid).order('creato_il', {ascending:false})
-  ]);
-  cache.casse = c1.data || [];
-  cache.depositi = c2.data || [];
-  cache.ricevute = c3.data || [];
-  cache.anagrafiche = c4.data || [];
-  cache.beni = c5.data || [];
   try{
-    var { data: budget } = await sb.from('budget_annuali').select('*').eq('chiesa_id', cid).order('anno', {ascending:false}).order('categoria').order('voce');
-    cache.budgetAnnuali = budget || [];
-  }catch(e){
-    cache.budgetAnnuali = [];
+    var [c1,c2,c3,c4,c5] = await Promise.all([
+      sb.from('casse').select('*').eq('chiesa_id', cid).order('nome'),
+      sb.from('depositi').select('*').eq('chiesa_id', cid).order('nome'),
+      sb.from('ricevute').select('*, righe_ricevuta(*)').eq('chiesa_id', cid).order('data', {ascending:false}),
+      sb.from('anagrafiche').select('*').eq('chiesa_id', cid).order('nome'),
+      sb.from('beni').select('*').eq('chiesa_id', cid).order('creato_il', {ascending:false})
+    ]);
+    cache.casse = c1.data || [];
+    cache.depositi = c2.data || [];
+    cache.ricevute = c3.data || [];
+    cache.anagrafiche = c4.data || [];
+    cache.beni = c5.data || [];
+    try{
+      var { data: budget } = await sb.from('budget_annuali').select('*').eq('chiesa_id', cid).order('anno', {ascending:false}).order('categoria').order('voce');
+      cache.budgetAnnuali = budget || [];
+    }catch(e){
+      cache.budgetAnnuali = [];
+    }
+    try{
+      var { data: perc } = await sb.from('casse_percentuali_report').select('*').eq('chiesa_id', cid).order('valida_dal', {ascending:false});
+      cache.percentualiReport = perc || [];
+    }catch(e){
+      cache.percentualiReport = [];
+    }
+  }catch(err){
+    showToast('Modalità offline: visualizzo cache locale e bozze in coda.');
   }
-  try{
-    var { data: perc } = await sb.from('casse_percentuali_report').select('*').eq('chiesa_id', cid).order('valida_dal', {ascending:false});
-    cache.percentualiReport = perc || [];
-  }catch(e){
-    cache.percentualiReport = [];
-  }
+  await mergeOfflineDraftsIntoCache();
+  updateSyncBadge();
   renderAll();
 }
 function subscribeRealtime(){
@@ -1084,6 +1433,7 @@ function resetFormRicevuta(tipo){
   document.getElementById('rNome').value = '';
   document.getElementById('rDeposito').value = '';
   document.getElementById('rNote').value = '';
+  document.getElementById('rAllegati').value = '';
   document.getElementById('righeList').innerHTML='';
   addRigaRow('', '', '', tipo || 'entrata', true);
   ricalcolaTotale();
@@ -1152,6 +1502,15 @@ async function ensureAnagrafica(nome, tipoSuggerito){
 async function eliminaRicevutaById(id){
   if(!id) return;
   if(!confirm('Eliminare questa ricevuta? Non si può annullare.')) return;
+  if(String(id).indexOf('offline:')===0){
+    var localId = String(id).replace('offline:','');
+    await removeOfflineReceipt(localId);
+    cache.ricevute = cache.ricevute.filter(function(r){ return String(r.id)!==String(id); });
+    renderAll();
+    closeModal('modalRicevuta');
+    showToast('Bozza offline eliminata');
+    return;
+  }
   await sb.from('ricevute').delete().eq('id', id);
   closeModal('modalRicevuta');
   await loadAll();
@@ -1167,6 +1526,8 @@ document.getElementById('btnConfermaRicevuta').addEventListener('click', async f
   var data = document.getElementById('rData').value || todayISO();
   var depositoId = document.getElementById('rDeposito').value || null;
   var note = document.getElementById('rNote').value;
+  var allegatiInput = document.getElementById('rAllegati');
+  var allegatiFiles = Array.from((allegatiInput && allegatiInput.files) ? allegatiInput.files : []);
   if(!nome){ showToast('Inserisci un nome'); return; }
   if(!depositoId){ showToast('Seleziona un deposito'); return; }
   var righe = [];
@@ -1192,6 +1553,64 @@ document.getElementById('btnConfermaRicevuta').addEventListener('click', async f
   if(tipo!=='entrata' && tipo!=='uscita'){ showToast('Tipo ricevuta non valido. Riapri il modulo.'); return; }
   if(!activeChiesa || !activeChiesa.id){ showToast('Chiesa non pronta. Attendi un secondo e riprova.'); return; }
 
+  if(id && String(id).indexOf('offline:')===0){
+    var localIdEdit = String(id).replace('offline:','');
+    var existingDraft = await idbGet(OFFLINE_RECEIPTS_STORE, localIdEdit);
+    var offlineAttachments = allegatiFiles.length ? await filesToOfflineAttachments(allegatiFiles) : ((existingDraft && existingDraft.attachments) ? existingDraft.attachments : []);
+    var payloadEdit = {
+      local_id: localIdEdit,
+      chiesa_id: activeChiesa.id,
+      tipo: tipo,
+      data: data,
+      nome: nome,
+      cassa_id: cassaHeader,
+      deposito_id: depositoId,
+      totale: totale,
+      note: note,
+      righe: righe,
+      attachments: offlineAttachments,
+      offline_creato_il: new Date().toISOString(),
+      numero_temp: buildOfflineNumero(localIdEdit, tipo==='entrata'?'E':'U')
+    };
+    await idbPut(OFFLINE_RECEIPTS_STORE, payloadEdit);
+    await idbPut(OFFLINE_OPS_STORE, {
+      id: localIdEdit,
+      action: 'create_ricevuta',
+      chiesa_id: activeChiesa.id,
+      created_at: new Date().toISOString(),
+      retry_count: 0,
+      next_retry_at: null,
+      last_error: null,
+      payload: payloadEdit
+    });
+    closeModal('modalRicevuta');
+    await loadAll();
+    showToast('Bozza offline aggiornata');
+    return;
+  }
+
+  if(!isOnline() && !id){
+    var offlineAttachmentsNew = allegatiFiles.length ? await filesToOfflineAttachments(allegatiFiles) : [];
+    var offlinePayload = {
+      chiesa_id: activeChiesa.id,
+      tipo: tipo,
+      data: data,
+      nome: nome,
+      cassa_id: cassaHeader,
+      deposito_id: depositoId,
+      totale: totale,
+      note: note,
+      righe: righe,
+      attachments: offlineAttachmentsNew
+    };
+    var draft = await queueOfflineReceipt(offlinePayload);
+    cache.ricevute.unshift(offlineDraftToCache(draft));
+    closeModal('modalRicevuta');
+    renderAll();
+    showToast('Ricevuta salvata offline. Verrà sincronizzata appena torni online.');
+    return;
+  }
+
   savingRicevuta = true;
   setRicevutaSaving(true);
   var salvata = false;
@@ -1205,6 +1624,10 @@ document.getElementById('btnConfermaRicevuta').addEventListener('click', async f
 
       var insRigheRes = await sb.from('righe_ricevuta').insert(righe.map(function(r){ return { ricevuta_id:id, descrizione:r.descrizione, importo:r.importo, cassa_id:r.cassa_id }; }));
       if(insRigheRes.error){ showToast('Errore salvataggio righe ricevuta'); return; }
+
+      if(allegatiFiles.length){
+        await uploadAttachmentsOnline(id, activeChiesa.id, allegatiFiles.map(function(f){ return { file:f, name:f.name, type:f.type, size:f.size }; }));
+      }
     } else {
       var numeroGen = null, errNum = null;
       for(var tentativo=1; tentativo<=2; tentativo++){
@@ -1227,6 +1650,10 @@ document.getElementById('btnConfermaRicevuta').addEventListener('click', async f
       var insRigheNewRes = await sb.from('righe_ricevuta').insert(righe.map(function(r){ return { ricevuta_id:nuova.id, descrizione:r.descrizione, importo:r.importo, cassa_id:r.cassa_id }; }));
       if(insRigheNewRes.error){ showToast('Errore salvataggio righe ricevuta'); return; }
 
+      if(allegatiFiles.length){
+        await uploadAttachmentsOnline(nuova.id, activeChiesa.id, allegatiFiles.map(function(f){ return { file:f, name:f.name, type:f.type, size:f.size }; }));
+      }
+
       try{ await ensureAnagrafica(nome, tipo==='entrata'?'ospite':'fornitore'); }catch(_e){}
     }
     salvata = true;
@@ -1245,6 +1672,15 @@ document.getElementById('btnEliminaRicevuta').addEventListener('click', async fu
   if(!canWrite){ showToast('Sola lettura: non puoi eliminare in questa chiesa.'); return; }
   await eliminaRicevutaById(id);
 });
+
+var btnSyncNow = document.getElementById('btnSyncNow');
+if(btnSyncNow){
+  btnSyncNow.addEventListener('click', async function(){
+    if(!activeChiesa || !activeChiesa.id){ showToast('Seleziona prima una chiesa.'); return; }
+    if(!isOnline()){ showToast('Sei offline: sincronizzazione non disponibile.'); return; }
+    await syncOfflineQueue();
+  });
+}
 
 /* ================= CASSE E DEPOSITI ================= */
 function renderCasse(){
@@ -2048,6 +2484,8 @@ document.getElementById('btnImpConferma').addEventListener('click', async functi
 });
 
 /* ================= AVVIO ================= */
+openOfflineDb().catch(function(){});
+updateSyncBadge();
 initAuth();
 })();
 </script>
