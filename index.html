@@ -138,6 +138,7 @@
   .toast{ position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--bg); padding:10px 18px; border-radius:6px; font-size:13.5px; z-index:80; opacity:0; pointer-events:none; transition:opacity .2s; }
   .toast.show{ opacity:1; }
   .settings-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px 20px; }
+  .brand-preview{ width:100%; max-height:120px; object-fit:contain; border:1px dashed var(--rule); border-radius:6px; background:var(--surface-2); padding:6px; }
   .thumb{ width:36px; height:36px; object-fit:cover; border-radius:4px; border:1px solid var(--rule); background:var(--surface-2); }
   .step-tabs{ display:flex; gap:6px; margin-bottom:14px; }
   .step-tab{ padding:6px 12px; border-radius:20px; font-size:12.5px; background:var(--surface-2); color:var(--ink-soft); }
@@ -151,6 +152,16 @@
     .nav-mobile-toggle{ display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border:1px solid var(--rule); border-radius:6px; background:var(--surface); cursor:pointer; flex:0 0 auto; }
     .content{ padding:18px 16px 60px; } .topbar{ padding:12px 16px; }
     .stat-row,.chart-grid{ grid-template-columns:1fr 1fr; }
+  }
+  @media (max-width: 560px){
+    .content{ padding:14px 12px 48px; }
+    .filters{ display:grid; grid-template-columns:1fr; gap:8px; }
+    .filters select, .filters input{ width:100%; min-width:0; }
+    .stat-row,.chart-grid{ grid-template-columns:1fr; }
+    .riga{ grid-template-columns:1fr; }
+    .row-actions{ flex-wrap:wrap; }
+    table{ font-size:12.5px; }
+    th, td{ padding:7px 8px; }
   }
 </style>
 </head>
@@ -397,6 +408,8 @@
               <div class="field"><label>E-mail</label><input id="setEmail" type="email"></div>
               <div class="field"><label>Tesoriere</label><input id="setTesoriere" type="text"></div>
               <div class="field"><label>Zeri davanti al numero</label><select id="setZeri"><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div>
+              <div class="field"><label>Firma tesoriere (immagine)</label><input id="setFirmaFile" type="file" accept="image/*"><img id="setFirmaPreview" class="brand-preview" alt="Firma tesoriere" style="margin-top:6px; display:none;"><button class="btn btn-sm" type="button" id="btnRimuoviFirma" style="margin-top:6px; display:none;">Rimuovi firma</button></div>
+              <div class="field"><label>Timbro chiesa (immagine)</label><input id="setTimbroFile" type="file" accept="image/*"><img id="setTimbroPreview" class="brand-preview" alt="Timbro chiesa" style="margin-top:6px; display:none;"><button class="btn btn-sm" type="button" id="btnRimuoviTimbro" style="margin-top:6px; display:none;">Rimuovi timbro</button></div>
             </div>
             <button class="btn btn-primary" id="btnSalvaImpostazioni" style="margin-top:10px;">Salva impostazioni</button>
           </div>
@@ -422,7 +435,8 @@
     <div class="field"><label>Note</label><textarea id="rNote"></textarea></div>
   </div>
   <div class="modal-foot">
-    <button class="btn btn-danger btn-ghost" id="btnEliminaRicevuta" style="margin-right:auto; display:none;">Elimina</button>
+    <button class="btn" id="btnStampaRicevuta" style="margin-right:auto; display:none;">🖨️ Stampa</button>
+    <button class="btn btn-danger btn-ghost" id="btnEliminaRicevuta" style="display:none;">Elimina</button>
     <button class="btn" data-close>Annulla</button><button class="btn btn-primary" id="btnConfermaRicevuta"><span class="spinner" aria-hidden="true"></span><span class="label">Conferma</span></button>
   </div>
 </div></div>
@@ -537,6 +551,9 @@ var OFFLINE_OPS_STORE = 'offline_ops';
 var OFFLINE_RECEIPTS_STORE = 'offline_receipts';
 var DEVICE_ID_KEY = 'adsgmdr_device_id';
 var MAX_SYNC_RETRY = 8;
+var SIGNATURE_KEY_PREFIX = 'adsgmdr_signature_';
+var STAMP_KEY_PREFIX = 'adsgmdr_stamp_';
+var brandingAssets = { firma:null, timbro:null };
 
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function fmtEUR(n){ n=Number(n)||0; return n.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; }
@@ -562,6 +579,37 @@ document.querySelectorAll('.modal-backdrop').forEach(function(bd){
   bd.addEventListener('click', function(e){ if(e.target===bd) bd.classList.remove('open'); });
   bd.querySelectorAll('[data-close]').forEach(function(b){ b.addEventListener('click', function(){ bd.classList.remove('open'); }); });
 });
+
+function churchScopedKey(prefix){
+  var cid = activeChiesa && activeChiesa.id ? String(activeChiesa.id) : 'global';
+  return prefix + cid;
+}
+function setImagePreview(imgEl, btnEl, dataUrl){
+  if(!imgEl) return;
+  if(dataUrl){
+    imgEl.src = dataUrl;
+    imgEl.style.display = 'block';
+    if(btnEl) btnEl.style.display = 'inline-flex';
+  } else {
+    imgEl.removeAttribute('src');
+    imgEl.style.display = 'none';
+    if(btnEl) btnEl.style.display = 'none';
+  }
+}
+function loadBrandingAssets(){
+  try{ brandingAssets.firma = localStorage.getItem(churchScopedKey(SIGNATURE_KEY_PREFIX)) || null; }catch(_e){ brandingAssets.firma = null; }
+  try{ brandingAssets.timbro = localStorage.getItem(churchScopedKey(STAMP_KEY_PREFIX)) || null; }catch(_e2){ brandingAssets.timbro = null; }
+  setImagePreview(document.getElementById('setFirmaPreview'), document.getElementById('btnRimuoviFirma'), brandingAssets.firma);
+  setImagePreview(document.getElementById('setTimbroPreview'), document.getElementById('btnRimuoviTimbro'), brandingAssets.timbro);
+}
+function fileToDataUrl(file){
+  return new Promise(function(resolve, reject){
+    var fr = new FileReader();
+    fr.onload = function(){ resolve(fr.result); };
+    fr.onerror = function(){ reject(fr.error); };
+    fr.readAsDataURL(file);
+  });
+}
 
 /* ================= OFFLINE QUEUE (IndexedDB) ================= */
 function openOfflineDb(){
@@ -964,6 +1012,7 @@ async function setActiveChiesa(chiesaId){
     if(b.id!=='btnLogin') b.disabled = !canWrite;
   });
   if(realtimeChannel) sb.removeChannel(realtimeChannel);
+  loadBrandingAssets();
   await loadAll();
   subscribeRealtime();
   await syncOfflineQueue();
@@ -1308,7 +1357,7 @@ function renderRicevute(){
       '<td><span class="tag '+(r.tipo==='entrata'?'tag-e':'tag-u')+'">'+(r.tipo==='entrata'?'Entrata':'Uscita')+'</span></td>'+
       '<td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td>'+
       '<td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td>'+
-      '<td class="row-actions"><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Modifica</button><button class="btn btn-sm btn-danger btn-ghost" data-del-ricevuta="'+r.id+'">Cancella</button></td></tr>';
+      '<td class="row-actions"><button class="btn btn-sm" data-print-ricevuta="'+r.id+'">Stampa</button><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Modifica</button><button class="btn btn-sm btn-danger btn-ghost" data-del-ricevuta="'+r.id+'">Cancella</button></td></tr>';
   }).join('');
   bindRicevutaRowActions(body);
 }
@@ -1332,7 +1381,7 @@ function renderEntrate(){
   if(list.length===0){ body.innerHTML='<tr class="empty-row"><td colspan="7">Nessuna entrata trovata.</td></tr>'; return; }
   body.innerHTML = list.map(function(r){
     var deposito = cache.depositi.find(function(d){return d.id===r.deposito_id;});
-    return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td class="row-actions"><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Modifica</button><button class="btn btn-sm btn-danger btn-ghost" data-del-ricevuta="'+r.id+'">Cancella</button></td></tr>';
+    return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td class="row-actions"><button class="btn btn-sm" data-print-ricevuta="'+r.id+'">Stampa</button><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Modifica</button><button class="btn btn-sm btn-danger btn-ghost" data-del-ricevuta="'+r.id+'">Cancella</button></td></tr>';
   }).join('');
   bindRicevutaRowActions(body);
 }
@@ -1355,13 +1404,16 @@ function renderUscite(){
   if(list.length===0){ body.innerHTML='<tr class="empty-row"><td colspan="7">Nessuna uscita trovata.</td></tr>'; return; }
   body.innerHTML = list.map(function(r){
     var deposito = cache.depositi.find(function(d){return d.id===r.deposito_id;});
-    return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td class="row-actions"><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Modifica</button><button class="btn btn-sm btn-danger btn-ghost" data-del-ricevuta="'+r.id+'">Cancella</button></td></tr>';
+    return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td class="row-actions"><button class="btn btn-sm" data-print-ricevuta="'+r.id+'">Stampa</button><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Modifica</button><button class="btn btn-sm btn-danger btn-ghost" data-del-ricevuta="'+r.id+'">Cancella</button></td></tr>';
   }).join('');
   bindRicevutaRowActions(body);
 }
 
 function bindRicevutaRowActions(container){
   if(!container) return;
+  container.querySelectorAll('[data-print-ricevuta]').forEach(function(b){
+    b.addEventListener('click', function(){ stampaRicevutaById(b.getAttribute('data-print-ricevuta')); });
+  });
   container.querySelectorAll('[data-open-ricevuta]').forEach(function(b){
     b.addEventListener('click', function(){ apriRicevuta(b.getAttribute('data-open-ricevuta')); });
   });
@@ -1444,6 +1496,7 @@ function clearRicevutaOnClose(){
   document.getElementById('ricevutaTitolo').textContent = 'Nuova entrata';
   document.getElementById('rNomeLabel').textContent = 'Contribuente';
   document.getElementById('btnEliminaRicevuta').style.display = 'none';
+  document.getElementById('btnStampaRicevuta').style.display = 'none';
 }
 
 var modalRicevutaEl = document.getElementById('modalRicevuta');
@@ -1456,6 +1509,7 @@ function apriModaleRicevuta(tipo, existing){
   document.getElementById('ricevutaTitolo').textContent = existing ? ('Ricevuta '+existing.numero) : (tipo==='entrata'?'Nuova entrata':'Nuova uscita');
   document.getElementById('rNomeLabel').textContent = tipo==='entrata' ? 'Contribuente' : 'Fornitore';
   document.getElementById('btnEliminaRicevuta').style.display = existing ? 'inline-flex' : 'none';
+  document.getElementById('btnStampaRicevuta').style.display = existing ? 'inline-flex' : 'none';
   if(existing){
     document.getElementById('righeList').innerHTML='';
     document.getElementById('ricevutaId').value = existing.id;
@@ -1475,6 +1529,55 @@ function apriModaleRicevuta(tipo, existing){
   ricalcolaTotale();
   openModal('modalRicevuta');
 }
+
+function buildRicevutaPrintHtml(r){
+  var righe = getRigheMovimento(r);
+  var deposito = cache.depositi.find(function(d){ return d.id===r.deposito_id; });
+  var righeHtml = righe.map(function(x){
+    var cassa = cache.casse.find(function(c){ return c.id===x.cassa_id; });
+    return '<tr><td>'+esc(x.descrizione||'—')+'</td><td>'+esc(cassa?cassa.nome:'—')+'</td><td style="text-align:right">'+fmtEUR(Math.abs(x.importo||0))+'</td></tr>';
+  }).join('');
+  var tipoLabel = r.tipo==='entrata' ? 'Entrata' : 'Uscita';
+  var firma = brandingAssets.firma ? '<img src="'+brandingAssets.firma+'" alt="Firma tesoriere" style="max-height:84px; max-width:220px; object-fit:contain;">' : '<div style="height:84px;"></div>';
+  var timbro = brandingAssets.timbro ? '<img src="'+brandingAssets.timbro+'" alt="Timbro chiesa" style="max-height:120px; max-width:220px; object-fit:contain;">' : '<div style="height:120px;"></div>';
+  return '<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
+    '<title>Ricevuta '+esc(r.numero)+'</title>'+
+    '<style>body{font-family:Arial,sans-serif;color:#111;margin:20px;} .wrap{max-width:820px;margin:0 auto;} h1{margin:0;font-size:23px;} .sub{margin:2px 0 10px;color:#444;font-size:13px;} .title{font-size:16px;margin:12px 0 8px;} table{width:100%;border-collapse:collapse;font-size:13px;} th,td{border:1px solid #ddd;padding:7px 8px;} th{background:#f5f5f5;text-align:left;} .meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 12px;} .box{border:1px solid #ddd;padding:8px;border-radius:6px;} .tot{font-weight:700;text-align:right;font-size:16px;margin-top:10px;} .foot{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:22px;align-items:end;} .sig,.stamp{border-top:1px solid #999;padding-top:6px;text-align:center;font-size:12px;color:#444;} @media print{body{margin:10mm;} .no-print{display:none;}}</style></head><body>'+
+    '<div class="wrap">'+
+      '<h1>Avventisti Del Settimo Giorno <span style="font-weight:800;">Movimento Di Riforma</span></h1>'+
+      '<div class="sub">'+esc((activeChiesa && activeChiesa.nome) || 'Chiesa locale')+'</div>'+
+      '<div class="title">Ricevuta '+esc(r.numero)+' · '+tipoLabel+'</div>'+
+      '<div class="meta">'+
+        '<div class="box"><strong>Data:</strong> '+fmtDate(r.data)+'</div>'+
+        '<div class="box"><strong>Deposito:</strong> '+esc(deposito?deposito.nome:'—')+'</div>'+
+        '<div class="box"><strong>Nominativo:</strong> '+esc(r.nome||'')+'</div>'+
+        '<div class="box"><strong>Tipo:</strong> '+tipoLabel+'</div>'+
+      '</div>'+
+      '<table><thead><tr><th>Descrizione</th><th>Cassa</th><th style="text-align:right">Importo</th></tr></thead><tbody>'+righeHtml+'</tbody></table>'+
+      (r.note ? '<div style="margin-top:10px;"><strong>Note:</strong> '+esc(r.note)+'</div>' : '')+
+      '<div class="tot">Totale: '+fmtEUR(r.totale)+'</div>'+
+      '<div class="foot">'+
+        '<div><div style="margin-bottom:8px;text-align:center;">'+timbro+'</div><div class="stamp">Timbro chiesa</div></div>'+
+        '<div><div style="margin-bottom:8px;text-align:center;">'+firma+'</div><div class="sig">Firma tesoriere</div></div>'+
+      '</div>'+
+      '<div class="no-print" style="margin-top:18px;"><button onclick="window.print()">Stampa</button></div>'+
+    '</div></body></html>';
+}
+function stampaRicevutaById(id){
+  var r = cache.ricevute.find(function(x){ return String(x.id)===String(id); });
+  if(!r){ showToast('Ricevuta non trovata'); return; }
+  var w = window.open('', '_blank');
+  if(!w){ showToast('Popup bloccato: abilita i popup per stampare.'); return; }
+  w.document.open();
+  w.document.write(buildRicevutaPrintHtml(r));
+  w.document.close();
+  setTimeout(function(){ try{ w.focus(); w.print(); }catch(_e){} }, 250);
+}
+document.getElementById('btnStampaRicevuta').addEventListener('click', function(){
+  var id = document.getElementById('ricevutaId').value;
+  if(!id) return;
+  stampaRicevutaById(id);
+});
 function apriRicevuta(id){ var r = cache.ricevute.find(function(x){return x.id===id;}); if(r) apriModaleRicevuta(r.tipo, r); }
 document.getElementById('btnNuovaEntrata').addEventListener('click', function(){ apriModaleRicevuta('entrata', null); });
 document.getElementById('btnNuovaUscita').addEventListener('click', function(){ apriModaleRicevuta('uscita', null); });
@@ -2182,6 +2285,7 @@ function renderImpostazioni(){
   document.getElementById('setEmail').value = c.email||'';
   document.getElementById('setTesoriere').value = c.tesoriere||'';
   document.getElementById('setZeri').value = String(c.zeri_numerazione||3);
+  loadBrandingAssets();
 }
 document.getElementById('btnSalvaImpostazioni').addEventListener('click', async function(){
   if(!canWrite){ showToast('Sola lettura'); return; }
@@ -2197,7 +2301,35 @@ document.getElementById('btnSalvaImpostazioni').addEventListener('click', async 
   await sb.from('chiese').update(payload).eq('id', activeChiesa.id);
   activeChiesa = Object.assign(activeChiesa, payload);
   document.getElementById('fieldNameLabel').textContent = activeChiesa.nome;
+  var firmaFile = (document.getElementById('setFirmaFile').files||[])[0];
+  var timbroFile = (document.getElementById('setTimbroFile').files||[])[0];
+  if(firmaFile){
+    brandingAssets.firma = await fileToDataUrl(firmaFile);
+    try{ localStorage.setItem(churchScopedKey(SIGNATURE_KEY_PREFIX), brandingAssets.firma); }catch(_e){}
+  }
+  if(timbroFile){
+    brandingAssets.timbro = await fileToDataUrl(timbroFile);
+    try{ localStorage.setItem(churchScopedKey(STAMP_KEY_PREFIX), brandingAssets.timbro); }catch(_e2){}
+  }
+  document.getElementById('setFirmaFile').value='';
+  document.getElementById('setTimbroFile').value='';
+  setImagePreview(document.getElementById('setFirmaPreview'), document.getElementById('btnRimuoviFirma'), brandingAssets.firma);
+  setImagePreview(document.getElementById('setTimbroPreview'), document.getElementById('btnRimuoviTimbro'), brandingAssets.timbro);
   showToast('Impostazioni salvate');
+});
+document.getElementById('btnRimuoviFirma').addEventListener('click', function(){
+  brandingAssets.firma = null;
+  try{ localStorage.removeItem(churchScopedKey(SIGNATURE_KEY_PREFIX)); }catch(_e){}
+  setImagePreview(document.getElementById('setFirmaPreview'), document.getElementById('btnRimuoviFirma'), null);
+  document.getElementById('setFirmaFile').value='';
+  showToast('Firma rimossa');
+});
+document.getElementById('btnRimuoviTimbro').addEventListener('click', function(){
+  brandingAssets.timbro = null;
+  try{ localStorage.removeItem(churchScopedKey(STAMP_KEY_PREFIX)); }catch(_e){}
+  setImagePreview(document.getElementById('setTimbroPreview'), document.getElementById('btnRimuoviTimbro'), null);
+  document.getElementById('setTimbroFile').value='';
+  showToast('Timbro rimosso');
 });
 
 /* ================= EXPORT ================= */
