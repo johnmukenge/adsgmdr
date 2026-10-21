@@ -954,6 +954,10 @@ function normalizeRuolo(ruoloRaw){
   if(r==='tesoriere_locale') return 'tesoriere_chiesa';
   if(r==='tesorierecampo') return 'tesoriere_campo';
   if(r==='tesorierechiesa') return 'tesoriere_chiesa';
+  if(r==='presidente') return 'presidente_campo_ro';
+  if(r==='presidente_campo') return 'presidente_campo_ro';
+  if(r==='lettore_anon') return 'lettore_campo_ro_anon';
+  if(r==='lettore_campo_anon') return 'lettore_campo_ro_anon';
   return r;
 }
 function parseRuoli(ruoloRaw){
@@ -964,6 +968,7 @@ function parseRuoli(ruoloRaw){
   return Array.from(new Set(parts));
 }
 function hasRole(role){ return profileRoles.indexOf(role)!==-1; }
+function isCampoRead(){ return hasRole('tesoriere_campo') || hasRole('presidente_campo_ro') || hasRole('lettore_campo_ro_anon'); }
 function isCampo(){ return hasRole('tesoriere_campo'); }
 function isAdminOnly(){ return hasRole('admin') && !isCampo(); }
 
@@ -985,14 +990,14 @@ async function afterLogin(){
 
   // Campo e admin possono consultare tutte le chiese.
   // Se c'è il ruolo campo, la default è sempre la sua chiesa (campo), mai la prima in lista.
-  if(isCampo() || hasRole('admin')){
+  if(isCampoRead() || hasRole('admin')){
     var { data: chiese } = await sb.from('chiese').select('id,nome').order('nome');
     chieseDisponibili = chiese || [];
     var sel = document.getElementById('chiesaSelect');
     sel.innerHTML = chieseDisponibili.map(function(c){ return '<option value="'+c.id+'">'+esc(c.nome)+'</option>'; }).join('');
     sel.style.display = 'inline-block';
     sel.addEventListener('change', function(){ setActiveChiesa(sel.value); });
-    var startId = isCampo() ? (prof.chiesa_id || (chieseDisponibili[0] && chieseDisponibili[0].id)) : (prof.chiesa_id || (chieseDisponibili[0] && chieseDisponibili[0].id));
+    var startId = prof.chiesa_id || (chieseDisponibili[0] && chieseDisponibili[0].id);
     sel.value = startId;
     await setActiveChiesa(startId);
   } else {
@@ -1026,15 +1031,31 @@ async function loadAll(){
     var [c1,c2,c3,c4,c5] = await Promise.all([
       sb.from('casse').select('*').eq('chiesa_id', cid).order('nome'),
       sb.from('depositi').select('*').eq('chiesa_id', cid).order('nome'),
-      sb.from('ricevute').select('*, righe_ricevuta(*)').eq('chiesa_id', cid).order('data', {ascending:false}),
-      sb.from('anagrafiche').select('*').eq('chiesa_id', cid).order('nome'),
+      sb.rpc('lista_ricevute_sicure', { p_chiesa_id: cid }),
+      sb.rpc('lista_anagrafiche_sicure', { p_chiesa_id: cid }),
       sb.from('beni').select('*').eq('chiesa_id', cid).order('creato_il', {ascending:false})
     ]);
     cache.casse = c1.data || [];
     cache.depositi = c2.data || [];
-    cache.ricevute = c3.data || [];
-    cache.anagrafiche = c4.data || [];
+    cache.ricevute = (c3 && !c3.error && Array.isArray(c3.data) ? c3.data : []).map(function(r){
+      if(!Array.isArray(r.righe_ricevuta)) r.righe_ricevuta = [];
+      return r;
+    });
+    cache.anagrafiche = (c4 && !c4.error && Array.isArray(c4.data) ? c4.data : []);
     cache.beni = c5.data || [];
+
+    if(c3 && c3.error){
+      try{
+        var c3fb = await sb.from('ricevute').select('*, righe_ricevuta(*)').eq('chiesa_id', cid).order('data', {ascending:false});
+        cache.ricevute = c3fb.data || cache.ricevute;
+      }catch(_e1){}
+    }
+    if(c4 && c4.error){
+      try{
+        var c4fb = await sb.from('anagrafiche').select('*').eq('chiesa_id', cid).order('nome');
+        cache.anagrafiche = c4fb.data || cache.anagrafiche;
+      }catch(_e2){}
+    }
     try{
       var { data: budget } = await sb.from('budget_annuali').select('*').eq('chiesa_id', cid).order('anno', {ascending:false}).order('categoria').order('voce');
       cache.budgetAnnuali = budget || [];
