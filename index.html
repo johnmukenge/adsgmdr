@@ -1359,6 +1359,12 @@ function populateCassaSelects(){
 }
 function populateDepositoSelect(){ document.getElementById('rDeposito').innerHTML = '<option value="">—</option>' + cache.depositi.map(function(d){ return '<option value="'+d.id+'">'+esc(d.nome)+'</option>'; }).join(''); }
 function populateAnagraficheDatalist(){ document.getElementById('anagraficheList').innerHTML = cache.anagrafiche.map(function(a){ return '<option value="'+esc(a.nome)+'">'; }).join(''); }
+function ricevutaActionsHtml(id){
+  if(canWrite){
+    return '<button class="btn btn-sm" data-print-ricevuta="'+id+'">Stampa</button><button class="btn btn-sm" data-open-ricevuta="'+id+'">Modifica</button><button class="btn btn-sm btn-danger btn-ghost" data-del-ricevuta="'+id+'">Cancella</button>';
+  }
+  return '<button class="btn btn-sm" disabled>Stampa</button><button class="btn btn-sm" disabled>Modifica</button>';
+}
 
 function renderRicevute(){
   var tipo = document.getElementById('filtTipo').value, cassaId = document.getElementById('filtCassa').value;
@@ -1378,7 +1384,7 @@ function renderRicevute(){
       '<td><span class="tag '+(r.tipo==='entrata'?'tag-e':'tag-u')+'">'+(r.tipo==='entrata'?'Entrata':'Uscita')+'</span></td>'+
       '<td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td>'+
       '<td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td>'+
-      '<td class="row-actions"><button class="btn btn-sm" data-print-ricevuta="'+r.id+'">Stampa</button><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Modifica</button><button class="btn btn-sm btn-danger btn-ghost" data-del-ricevuta="'+r.id+'">Cancella</button></td></tr>';
+      '<td class="row-actions">'+ricevutaActionsHtml(r.id)+'</td></tr>';
   }).join('');
   bindRicevutaRowActions(body);
 }
@@ -1402,7 +1408,7 @@ function renderEntrate(){
   if(list.length===0){ body.innerHTML='<tr class="empty-row"><td colspan="7">Nessuna entrata trovata.</td></tr>'; return; }
   body.innerHTML = list.map(function(r){
     var deposito = cache.depositi.find(function(d){return d.id===r.deposito_id;});
-    return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td class="row-actions"><button class="btn btn-sm" data-print-ricevuta="'+r.id+'">Stampa</button><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Modifica</button><button class="btn btn-sm btn-danger btn-ghost" data-del-ricevuta="'+r.id+'">Cancella</button></td></tr>';
+    return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td class="row-actions">'+ricevutaActionsHtml(r.id)+'</td></tr>';
   }).join('');
   bindRicevutaRowActions(body);
 }
@@ -1425,7 +1431,7 @@ function renderUscite(){
   if(list.length===0){ body.innerHTML='<tr class="empty-row"><td colspan="7">Nessuna uscita trovata.</td></tr>'; return; }
   body.innerHTML = list.map(function(r){
     var deposito = cache.depositi.find(function(d){return d.id===r.deposito_id;});
-    return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td class="row-actions"><button class="btn btn-sm" data-print-ricevuta="'+r.id+'">Stampa</button><button class="btn btn-sm" data-open-ricevuta="'+r.id+'">Modifica</button><button class="btn btn-sm btn-danger btn-ghost" data-del-ricevuta="'+r.id+'">Cancella</button></td></tr>';
+    return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td class="row-actions">'+ricevutaActionsHtml(r.id)+'</td></tr>';
   }).join('');
   bindRicevutaRowActions(body);
 }
@@ -1529,8 +1535,8 @@ function apriModaleRicevuta(tipo, existing){
   document.getElementById('ricevutaTipo').value = tipo;
   document.getElementById('ricevutaTitolo').textContent = existing ? ('Ricevuta '+existing.numero) : (tipo==='entrata'?'Nuova entrata':'Nuova uscita');
   document.getElementById('rNomeLabel').textContent = tipo==='entrata' ? 'Contribuente' : 'Fornitore';
-  document.getElementById('btnEliminaRicevuta').style.display = existing ? 'inline-flex' : 'none';
-  document.getElementById('btnStampaRicevuta').style.display = existing ? 'inline-flex' : 'none';
+  document.getElementById('btnEliminaRicevuta').style.display = (canWrite && existing) ? 'inline-flex' : 'none';
+  document.getElementById('btnStampaRicevuta').style.display = (canWrite && existing) ? 'inline-flex' : 'none';
   if(existing){
     document.getElementById('righeList').innerHTML='';
     document.getElementById('ricevutaId').value = existing.id;
@@ -1591,6 +1597,7 @@ function buildRicevutaPrintHtml(r){
     '</div></body></html>';
 }
 function stampaRicevutaById(id){
+  if(!canWrite){ showToast('Sola lettura: stampa disabilitata.'); return; }
   var r = cache.ricevute.find(function(x){ return String(x.id)===String(id); });
   if(!r){ showToast('Ricevuta non trovata'); return; }
   var w = window.open('', '_blank');
@@ -1817,13 +1824,13 @@ function renderCasse(){
   var cBody = document.getElementById('casseBody');
   cBody.innerHTML = cache.casse.length===0 ? '<tr class="empty-row"><td colspan="5">Nessuna cassa.</td></tr>' :
     cache.casse.map(function(c){ return '<tr><td>'+esc(c.nome)+'</td><td>'+esc(c.nome_en||"—")+'</td><td>'+(Number(c.percentuale_cg)||0)+'%</td>'+
-      '<td class="num" style="text-align:right">'+fmtEUR(saldoCassa(c.id))+'</td><td><button class="btn btn-sm" data-edit-cassa="'+c.id+'">Modifica</button></td></tr>'; }).join('');
+      '<td class="num" style="text-align:right">'+fmtEUR(saldoCassa(c.id))+'</td><td><button class="btn btn-sm" data-edit-cassa="'+c.id+'"'+(canWrite?'':' disabled')+'>Modifica</button></td></tr>'; }).join('');
   cBody.querySelectorAll('[data-edit-cassa]').forEach(function(b){ b.addEventListener('click', function(){ apriCassa(b.getAttribute('data-edit-cassa')); }); });
 
   var dBody = document.getElementById('depositiBody');
   dBody.innerHTML = cache.depositi.length===0 ? '<tr class="empty-row"><td colspan="4">Nessun deposito.</td></tr>' :
     cache.depositi.map(function(d){ return '<tr><td>'+esc(d.nome)+'</td><td>'+(d.tipo==='banca'?'Banca':'Contanti')+'</td>'+
-      '<td class="num" style="text-align:right">'+fmtEUR(saldoDeposito(d.id))+'</td><td><button class="btn btn-sm" data-edit-deposito="'+d.id+'">Modifica</button></td></tr>'; }).join('');
+      '<td class="num" style="text-align:right">'+fmtEUR(saldoDeposito(d.id))+'</td><td><button class="btn btn-sm" data-edit-deposito="'+d.id+'"'+(canWrite?'':' disabled')+'>Modifica</button></td></tr>'; }).join('');
   dBody.querySelectorAll('[data-edit-deposito]').forEach(function(b){ b.addEventListener('click', function(){ apriDeposito(b.getAttribute('data-edit-deposito')); }); });
 }
 function apriCassa(id){
@@ -2187,7 +2194,7 @@ function renderAnagrafiche(){
       var tot = ric.reduce(function(s,r){return s+(r.tipo==='entrata'?1:-1)*Number(r.totale||0);},0);
       var tipoLabel = a.tipo==='membro'?'Membro':(a.tipo==='ospite'?'Ospite':'Fornitore');
       return '<tr><td>'+esc(a.nome)+'</td><td>'+tipoLabel+'</td><td>'+esc(a.telefono||'—')+'</td><td>'+(a.membro_da?fmtDate(a.membro_da):'—')+'</td>'+
-        '<td class="num">'+ric.length+'</td><td class="num">'+fmtEUR(tot)+'</td><td><button class="btn btn-sm" data-edit-anag="'+a.id+'">Modifica</button></td></tr>';
+        '<td class="num">'+ric.length+'</td><td class="num">'+fmtEUR(tot)+'</td><td><button class="btn btn-sm" data-edit-anag="'+a.id+'"'+(canWrite?'':' disabled')+'>Modifica</button></td></tr>';
     }).join('');
   body.querySelectorAll('[data-edit-anag]').forEach(function(b){ b.addEventListener('click', function(){ apriAnagrafica(b.getAttribute('data-edit-anag')); }); });
 }
@@ -2240,7 +2247,7 @@ function renderBeni(){
       return '<tr><td>'+(b.foto_url?'<img class="thumb" data-foto-id="'+b.id+'">':'')+'</td>'+
         '<td>'+esc(b.descrizione)+'</td><td>'+esc(b.categoria||'—')+'</td><td>'+(b.data_acquisto?fmtDate(b.data_acquisto):'—')+'</td>'+
         '<td class="num">'+(b.quantita||1)+'</td><td class="num" style="text-align:right">'+fmtEUR(b.valore)+'</td><td>'+statoLabel+'</td>'+
-        '<td><button class="btn btn-sm" data-edit-bene="'+b.id+'">Modifica</button></td></tr>';
+        '<td><button class="btn btn-sm" data-edit-bene="'+b.id+'"'+(canWrite?'':' disabled')+'>Modifica</button></td></tr>';
     }).join('');
   body.querySelectorAll('[data-edit-bene]').forEach(function(bt){ bt.addEventListener('click', function(){ apriBene(bt.getAttribute('data-edit-bene')); }); });
   body.querySelectorAll('[data-foto-id]').forEach(async function(img){
