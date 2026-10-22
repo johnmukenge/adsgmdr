@@ -153,6 +153,13 @@
   .step-tab{ padding:6px 12px; border-radius:20px; font-size:12.5px; background:var(--surface-2); color:var(--ink-soft); }
   .step-tab.active{ background:var(--green-tint); color:var(--green-dark); font-weight:600; }
   .map-row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:center; padding:6px 0; }
+  .help-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .help-card{ border:1px solid var(--rule); border-radius:10px; background:var(--surface); padding:14px; }
+  .help-card h3{ font-size:14px; margin-bottom:8px; color:var(--green-dark); }
+  .help-card ul{ margin:0; padding-left:18px; }
+  .help-card li{ margin:5px 0; }
+  .help-kpi{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:10px; }
+  .help-kpi .item{ border:1px dashed var(--rule-strong); border-radius:8px; padding:9px; background:var(--surface-2); font-size:12.5px; }
 
   @media (max-width: 860px){ .stat-row,.chart-grid{ grid-template-columns:1fr 1fr; } .field-row,.settings-grid,.map-row{ grid-template-columns:1fr; } }
   @media (max-width: 720px){
@@ -167,6 +174,7 @@
     .filters{ display:grid; grid-template-columns:1fr; gap:8px; }
     .filters select, .filters input{ width:100%; min-width:0; }
     .stat-row,.chart-grid{ grid-template-columns:1fr; }
+    .help-grid,.help-kpi{ grid-template-columns:1fr; }
     .riga{ grid-template-columns:1fr; }
     .row-actions{ flex-wrap:wrap; }
     table{ font-size:12.5px; }
@@ -207,6 +215,7 @@
       <li class="nav-item" data-section="beni"><span class="nav-icon">🏛️</span> Registro beni</li>
       <li class="nav-item" data-section="backup"><span class="nav-icon">☁️</span> Dati e backup</li>
       <li class="nav-item" data-section="impostazioni"><span class="nav-icon">⚙️</span> Impostazioni</li>
+      <li class="nav-item" data-section="assistenza"><span class="nav-icon">🆘</span> Assistenza</li>
     </ul>
     <div class="nav-foot">
       <div id="userLabel"></div>
@@ -421,6 +430,89 @@
               <div class="field"><label>Timbro chiesa (immagine)</label><input id="setTimbroFile" type="file" accept="image/*"><img id="setTimbroPreview" class="brand-preview" alt="Timbro chiesa" style="margin-top:6px; display:none;"><button class="btn btn-sm" type="button" id="btnRimuoviTimbro" style="margin-top:6px; display:none;">Rimuovi timbro</button></div>
             </div>
             <button class="btn btn-primary" id="btnSalvaImpostazioni" style="margin-top:10px;">Salva impostazioni</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ASSISTENZA -->
+      <section class="section" id="sec-assistenza">
+        <div class="panel">
+          <div class="panel-head"><h2>Guida rapida all'app</h2></div>
+          <div class="panel-body">
+            <p class="hint">Questa sezione aiuta un nuovo utente a capire come navigare, cosa può fare in base al ruolo e come lavorare in modo corretto e sicuro.</p>
+            <div class="help-kpi">
+              <div class="item"><strong>1)</strong> Scegli la chiesa nel selettore in alto (se disponibile).</div>
+              <div class="item"><strong>2)</strong> Registra entrate/uscite dalle sezioni dedicate.</div>
+              <div class="item"><strong>3)</strong> Controlla report e fai backup periodici.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="help-grid">
+          <div class="help-card">
+            <h3>Navigazione principale</h3>
+            <ul>
+              <li><strong>Dashboard:</strong> situazione veloce (saldo, mese, grafici, ultime ricevute).</li>
+              <li><strong>Entrate / Uscite:</strong> vista operativa per filtrare e consultare i movimenti.</li>
+              <li><strong>Ricevute:</strong> archivio completo con filtri per data, tipo e cassa.</li>
+              <li><strong>Statistiche:</strong> andamento mensile, annuale e distribuzione per casse.</li>
+              <li><strong>Casse e depositi:</strong> anagrafiche contabili usate nelle registrazioni.</li>
+            </ul>
+          </div>
+
+          <div class="help-card">
+            <h3>Ruoli utente e permessi</h3>
+            <ul>
+              <li><strong>Admin:</strong> pieno controllo e gestione trasversale.</li>
+              <li><strong>Tesoriere campo/chiesa:</strong> lettura + scrittura nella propria area.</li>
+              <li><strong>Presidente (RO):</strong> sola lettura, nomi visibili.</li>
+              <li><strong>Lettore anon (RO):</strong> sola lettura con nomi mascherati.</li>
+              <li>Se vedi il badge <strong>Sola lettura</strong>, non puoi modificare/stampare.</li>
+            </ul>
+          </div>
+
+          <div class="help-card">
+            <h3>Flusso consigliato (giornaliero)</h3>
+            <ul>
+              <li>Registra subito ogni movimento con data corretta.</li>
+              <li>Compila righe ricevuta (descrizione, cassa, importo) con precisione.</li>
+              <li>Aggiungi allegati quando servono (ricevute/foto/PDF).</li>
+              <li>Usa i filtri per controlli rapidi prima della chiusura giornata.</li>
+              <li>Verifica il riepilogo in Dashboard e Statistiche.</li>
+            </ul>
+          </div>
+
+          <div class="help-card">
+            <h3>Report, validazione e invio</h3>
+            <ul>
+              <li>In <strong>Report per cassa</strong> imposta periodo Dal/Al.</li>
+              <li>Premi <strong>Elabora report</strong> e controlla entrate/uscite/netto.</li>
+              <li>Prepara la bozza uscita per Campo/CG dove previsto dal ruolo.</li>
+              <li>Conferma manualmente la ricevuta per mantenere controllo umano.</li>
+              <li>Rivedi sempre note e periodo prima del salvataggio finale.</li>
+            </ul>
+          </div>
+
+          <div class="help-card">
+            <h3>Offline e sincronizzazione</h3>
+            <ul>
+              <li>Se manca rete, le operazioni vanno in coda locale.</li>
+              <li>Al ritorno online, la sincronizzazione parte automaticamente.</li>
+              <li>Il badge Sync segnala stato coda/ok/errori.</li>
+              <li>Puoi usare <strong>Sincronizza ora</strong> in Dati e backup.</li>
+              <li>La numerazione ufficiale viene consolidata lato server.</li>
+            </ul>
+          </div>
+
+          <div class="help-card">
+            <h3>Buone pratiche operative</h3>
+            <ul>
+              <li>Non condividere account personali tra utenti diversi.</li>
+              <li>Usa password robuste e cambia periodicamente le credenziali.</li>
+              <li>Esegui export JSON/Excel a cadenza regolare.</li>
+              <li>Controlla i ruoli in Supabase quando entra un nuovo utente.</li>
+              <li>In caso di dubbi, lavora in sola lettura e chiedi conferma all'admin.</li>
+            </ul>
           </div>
         </div>
       </section>
@@ -1092,7 +1184,7 @@ function subscribeRealtime(){
 }
 
 /* ================= NAVIGAZIONE ================= */
-var sectionTitles = { dashboard:"Dashboard", entrate:"Entrate", uscite:"Uscite", ricevute:"Ricevute", statistiche:"Statistiche", casse:"Casse e depositi", report:"Report per cassa", anagrafiche:"Anagrafiche", beni:"Registro beni", backup:"Dati e backup", impostazioni:"Impostazioni" };
+var sectionTitles = { dashboard:"Dashboard", entrate:"Entrate", uscite:"Uscite", ricevute:"Ricevute", statistiche:"Statistiche", casse:"Casse e depositi", report:"Report per cassa", anagrafiche:"Anagrafiche", beni:"Registro beni", backup:"Dati e backup", impostazioni:"Impostazioni", assistenza:"Assistenza" };
 function goSection(name){
   document.querySelectorAll('.section').forEach(function(s){ s.classList.remove('active'); });
   document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
