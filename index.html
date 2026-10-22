@@ -643,6 +643,7 @@ var profile = null, profileRoles = [], activeChiesa = null, chieseDisponibili = 
 var canWrite = false;
 var cache = { casse:[], depositi:[], ricevute:[], anagrafiche:[], beni:[], budgetAnnuali:[], percentualiReport:[] };
 var charts = {};
+var chartScriptLoaderPromise = null;
 var realtimeChannel = null;
 var offlineDb = null;
 var syncInProgress = false;
@@ -1195,6 +1196,7 @@ function goSection(name){
   if(name==='report') updateReportActionsUI();
   if(name==='statistiche') renderStatistiche();
   if(name==='impostazioni') renderImpostazioni();
+  setTimeout(function(){ resizeCharts(); }, 40);
 }
 document.querySelectorAll('.nav-item').forEach(function(item){ item.addEventListener('click', function(){ goSection(item.getAttribute('data-section')); }); });
 document.getElementById('navToggle').addEventListener('click', function(){ document.getElementById('nav').classList.toggle('open'); });
@@ -1203,6 +1205,7 @@ function renderAll(){
   populateCassaSelects(); populateDepositoSelect(); populateAnagraficheDatalist();
   updatePercentualiLabelsUI();
   renderDashboard(); renderEntrate(); renderUscite(); renderRicevute(); renderStatistiche(); renderCasse(); renderAnagrafiche(); renderBeni();
+  setTimeout(function(){ resizeCharts(); }, 40);
 }
 
 function getDestinazioneLabels(){
@@ -1332,10 +1335,100 @@ function renderDashboard(){
   ]);
 }
 function drawChart(canvasId, type, labels, datasets){
-  var ctx = document.getElementById(canvasId).getContext('2d');
-  if(charts[canvasId]) charts[canvasId].destroy();
-  charts[canvasId] = new Chart(ctx, { type:type, data:{ labels:labels, datasets:datasets },
-    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:datasets.length>1}}, scales:{ y:{ beginAtZero:true } } } });
+  var canvas = document.getElementById(canvasId);
+  if(!canvas) return;
+  var ctx = canvas.getContext('2d');
+  if(!ctx) return;
+
+  if(!window.Chart){
+    showChartFallback(canvasId, 'Grafico non disponibile: libreria non caricata.');
+    ensureChartLibrary().then(function(ok){
+      if(ok) drawChart(canvasId, type, labels, datasets);
+    });
+    return;
+  }
+
+  hideChartFallback(canvasId);
+  try{
+    if(charts[canvasId]) charts[canvasId].destroy();
+    charts[canvasId] = new Chart(ctx, {
+      type:type,
+      data:{ labels:labels, datasets:datasets },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:datasets.length>1}}, scales:{ y:{ beginAtZero:true } } }
+    });
+    if(charts[canvasId] && typeof charts[canvasId].resize==='function') charts[canvasId].resize();
+  }catch(e){
+    showChartFallback(canvasId, 'Grafico non disponibile. Ricarica la pagina.');
+  }
+}
+
+function ensureChartLibrary(){
+  if(window.Chart) return Promise.resolve(true);
+  if(chartScriptLoaderPromise) return chartScriptLoaderPromise;
+
+  var urls = [
+    'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js',
+    'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
+    'https://unpkg.com/chart.js@4.4.4/dist/chart.umd.min.js'
+  ];
+
+  chartScriptLoaderPromise = new Promise(function(resolve){
+    var i = 0;
+    function next(){
+      if(window.Chart){ resolve(true); return; }
+      if(i>=urls.length){ resolve(!!window.Chart); return; }
+      var s = document.createElement('script');
+      s.src = urls[i++];
+      s.async = true;
+      s.onload = function(){ resolve(!!window.Chart); };
+      s.onerror = next;
+      document.head.appendChild(s);
+    }
+    next();
+  }).finally(function(){
+    if(!window.Chart) chartScriptLoaderPromise = null;
+  });
+
+  return chartScriptLoaderPromise;
+}
+
+function showChartFallback(canvasId, message){
+  var canvas = document.getElementById(canvasId);
+  if(!canvas) return;
+  var wrap = canvas.parentElement;
+  if(!wrap) return;
+  var hint = wrap.querySelector('.chart-fallback');
+  if(!hint){
+    hint = document.createElement('div');
+    hint.className = 'chart-fallback';
+    hint.style.position = 'absolute';
+    hint.style.inset = '0';
+    hint.style.display = 'flex';
+    hint.style.alignItems = 'center';
+    hint.style.justifyContent = 'center';
+    hint.style.textAlign = 'center';
+    hint.style.padding = '12px';
+    hint.style.color = 'var(--ink-soft)';
+    hint.style.fontSize = '12px';
+    wrap.appendChild(hint);
+  }
+  hint.textContent = message || 'Grafico non disponibile.';
+}
+
+function hideChartFallback(canvasId){
+  var canvas = document.getElementById(canvasId);
+  if(!canvas || !canvas.parentElement) return;
+  var hint = canvas.parentElement.querySelector('.chart-fallback');
+  if(hint) hint.remove();
+}
+
+function resizeCharts(){
+  Object.keys(charts).forEach(function(id){
+    var chart = charts[id];
+    if(chart && typeof chart.resize==='function'){
+      try{ chart.resize(); }catch(_e){}
+    }
+  });
 }
 
 /* ================= STATISTICHE ================= */
