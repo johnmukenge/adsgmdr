@@ -658,7 +658,22 @@ var STAMP_KEY_PREFIX = 'adsgmdr_stamp_';
 var brandingAssets = { firma:null, timbro:null };
 
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-function fmtEUR(n){ n=Number(n)||0; return n.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; }
+function fmtEUR(n){
+  var num = Number(n);
+  if(!isFinite(num)) num = 0;
+  try{
+    return new Intl.NumberFormat('it-IT', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+      useGrouping: true
+    }).format(num) + ' €';
+  }catch(_e){
+    var fixed = (Math.round(num * 100) / 100).toFixed(2);
+    var parts = fixed.split('.');
+    var intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return intPart + ',' + parts[1] + ' €';
+  }
+}
 function fmtDate(iso){ if(!iso) return ""; var p=iso.split("-"); return p.length===3 ? p[2]+"/"+p[1]+"/"+p[0] : iso; }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 function isOnline(){ return navigator.onLine!==false; }
