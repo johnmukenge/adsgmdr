@@ -122,6 +122,11 @@
   .tag{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:11.5px; font-weight:500; }
   .tag-e{ background:var(--green-tint); color:var(--green-dark); } .tag-u{ background:var(--red-tint); color:var(--red); }
   .row-actions{ display:flex; gap:6px; }
+  .table-pagination{ display:flex; align-items:center; justify-content:flex-end; gap:8px; padding:10px 2px 2px; }
+  .table-pagination .info{ font-size:12px; color:var(--ink-soft); margin-right:auto; }
+  .table-pagination .btn{ padding:5px 10px; font-size:12px; }
+  .table-pagination .page-num{ min-width:34px; justify-content:center; }
+  .table-pagination .page-num.active{ background:var(--green-tint); border-color:var(--green); color:var(--green-dark); }
 
   .field{ margin-bottom:14px; }
   .field label{ display:block; font-size:12.5px; color:var(--ink-soft); margin-bottom:5px; }
@@ -378,6 +383,32 @@
             <button class="btn btn-primary" id="btnCreaRicevutaDaReport" style="display:none;">Crea ricevuta</button>
           </div>
         </div></div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>⛪ Rapporti delle chiese (PDF)</h2></div>
+          <div class="panel-body">
+            <p class="hint">Importa i PDF inviati dalle chiese locali e acquisiscili con creazione guidata delle ricevute nel conto attivo.</p>
+            <div class="action-row" style="margin-bottom:10px;">
+              <button class="btn" id="btnImportaRapportiChiese">📥 Importa PDF rapporti</button>
+              <button class="btn btn-primary" id="btnAcquisisciRapportoSelezionato">Acquisisci selezionato</button>
+              <input type="file" id="fileRapportiChiese" accept="application/pdf,.pdf" multiple style="display:none;">
+            </div>
+            <div class="table-wrap"><table><thead><tr><th></th><th>File</th><th>Data import</th><th style="text-align:right">Dimensione</th><th></th></tr></thead><tbody id="rapportiChieseBody"></tbody></table></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>🏛️ Report assemblea delegati</h2></div>
+          <div class="panel-body">
+            <p class="hint">Genera una vista riassuntiva del periodo selezionato con indicatori e dettaglio per cassa.</p>
+            <div class="action-row" style="margin-bottom:10px;">
+              <button class="btn" id="btnPreviewDeck">🖼️ Anteprima</button>
+              <button class="btn" id="btnApriDeck">▶️ Presenta</button>
+              <button class="btn btn-primary" id="btnDeckPdf">📄 Stampa/PDF</button>
+            </div>
+            <div id="deckPreview" class="hint">Nessuna anteprima generata.</div>
+          </div>
+        </div>
       </section>
 
       <!-- ANAGRAFICHE -->
@@ -663,6 +694,59 @@
   </div>
 </div></div>
 
+<!-- MODAL ACQUISISCI RAPPORTO CHIESA -->
+<div class="modal-backdrop" id="modalAcquisisciRapporto"><div class="modal">
+  <div class="modal-head"><h3>Acquisisci rapporto chiesa</h3><button class="modal-close" data-close>✕</button></div>
+  <div class="modal-body">
+    <input type="hidden" id="rapportoSelId">
+    <div class="field"><label>File selezionato</label><input id="rapportoSelNome" type="text" disabled></div>
+    <div class="action-row" style="margin-top:-4px; margin-bottom:6px; align-items:center; gap:8px;">
+      <button class="btn" id="btnRapportoAutoParse" type="button">🤖 Compila importi da PDF</button>
+      <span class="hint" id="rapportoParseHint">Estrazione semi-automatica dai testi del PDF.</span>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Data movimento</label><input id="rapportoData" type="date"></div>
+      <div class="field"><label>Nome chiesa locale</label><input id="rapportoChiesaNome" type="text" placeholder="Es. Leivi"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Entrata nel campo (€)</label><input id="rapportoEntrata" type="number" step="0.01" value="0"></div>
+      <div class="field"><label>Cassa entrata</label><select id="rapportoCassaEntrata"></select></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Uscita verso CG (€) (opzionale)</label><input id="rapportoUscitaCg" type="number" step="0.01" value="0"></div>
+      <div class="field"><label>Cassa uscita</label><select id="rapportoCassaUscita"></select></div>
+    </div>
+    <div class="field"><label>Deposito</label><select id="rapportoDeposito"></select></div>
+    <div class="field"><label>Note</label><textarea id="rapportoNote" placeholder="Es. Acquisizione rapporto chiesa locale"></textarea></div>
+  </div>
+  <div class="modal-foot">
+    <button class="btn" data-close>Annulla</button>
+    <button class="btn btn-primary" id="btnConfermaAcquisizioneRapporto">Conferma acquisizione</button>
+  </div>
+</div></div>
+
+<!-- MODAL SCANNER DOCUMENTO -->
+<div class="modal-backdrop" id="modalScanner"><div class="modal wide">
+  <div class="modal-head"><h3>📄 Scansiona documento</h3><button class="modal-close" id="btnChiudiScanner">✕</button></div>
+  <div class="modal-body">
+    <div style="position:relative; background:#101822; border-radius:10px; overflow:hidden; min-height:220px;">
+      <video id="scanVideo" playsinline autoplay muted style="display:block; width:100%; max-height:58vh; object-fit:contain;"></video>
+      <canvas id="scanCanvas" style="display:none"></canvas>
+    </div>
+    <div class="action-row" style="margin-top:10px;">
+      <button class="btn" id="btnScanStart">Avvia fotocamera</button>
+      <button class="btn btn-primary" id="btnScanShot">Scatta pagina</button>
+      <button class="btn" id="btnScanBn">B/N</button>
+      <button class="btn" id="btnScanColor">Colore</button>
+    </div>
+    <div id="scanPages" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;"></div>
+  </div>
+  <div class="modal-foot">
+    <button class="btn" id="btnScanAnnulla">Annulla</button>
+    <button class="btn btn-primary" id="btnScanUsa">Usa pagine negli allegati</button>
+  </div>
+</div></div>
+
 <div class="toast" id="toast"></div>
 
 <!-- MODAL RICERCA GLOBALE -->
@@ -721,6 +805,11 @@ var uiSettings = { lang:'it-IT', currency:'EUR' };
 var lockSettings = { enabled:false, hash:'', timeoutMin:0 };
 var lastUserActivityTs = Date.now();
 var lockTimerHandle = null;
+var CHURCH_REPORT_IMPORTS_KEY_PREFIX = 'adsgmdr_church_reports_';
+var churchReportImports = [];
+var scannerState = { stream:null, mode:'color', pages:[] };
+var openCvLoaderPromise = null;
+var pdfJsLoaderPromise = null;
 
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function fmtEUR(n){
@@ -780,6 +869,13 @@ function readScopedJson(prefix, fallback){
 }
 function saveScopedJson(prefix, obj){
   try{ localStorage.setItem(churchScopedKey(prefix), JSON.stringify(obj||{})); }catch(_e){}
+}
+function loadChurchReportImports(){
+  var arr = readScopedJson(CHURCH_REPORT_IMPORTS_KEY_PREFIX, []);
+  churchReportImports = Array.isArray(arr) ? arr : [];
+}
+function saveChurchReportImports(){
+  saveScopedJson(CHURCH_REPORT_IMPORTS_KEY_PREFIX, churchReportImports);
 }
 function applyUiSettings(){
   var langEl = document.getElementById('setUiLang');
@@ -1038,8 +1134,10 @@ async function filesToOfflineAttachments(fileList){
   }
   return out;
 }
-async function uploadAttachmentsOnline(ricevutaId, chiesaId, attachments){
+async function uploadAttachmentsOnline(ricevutaId, chiesaId, attachments, options){
   if(!attachments || !attachments.length) return 0;
+  options = options || {};
+  var source = options.source || 'upload';
   var uploaded = 0;
   for(var i=0;i<attachments.length;i++){
     var a = attachments[i];
@@ -1060,7 +1158,7 @@ async function uploadAttachmentsOnline(ricevutaId, chiesaId, attachments){
       nome_file: fileName,
       mime_type: a.type || blob.type || null,
       size_bytes: Number(a.size || blob.size || 0),
-      source: 'upload'
+      source: source
     });
     if(ins.error) throw ins.error;
     uploaded++;
@@ -1275,6 +1373,7 @@ async function setActiveChiesa(chiesaId){
   uiSettings = Object.assign({ lang:'it-IT', currency:'EUR' }, readScopedJson(UI_SETTINGS_KEY_PREFIX, { lang:'it-IT', currency:'EUR' }));
   applyUiSettings();
   readLockSettings();
+  loadChurchReportImports();
   document.getElementById('fieldNameLabel').textContent = chiesa ? chiesa.nome : 'Tesoreria';
   document.getElementById('readonlyBadge').style.display = canWrite ? 'none' : 'inline-flex';
   document.querySelectorAll('.btn-primary, .btn-danger').forEach(function(b){
@@ -1364,7 +1463,7 @@ function goSection(name){
   document.querySelector('.nav-item[data-section="'+name+'"]').classList.add('active');
   document.getElementById('topTitle').textContent = sectionTitles[name];
   document.getElementById('nav').classList.remove('open');
-  if(name==='report') updateReportActionsUI();
+  if(name==='report'){ updateReportActionsUI(); renderRapportiChieseImports(); }
   if(name==='statistiche') renderStatistiche();
   if(name==='archivio') renderArchivio();
   if(name==='impostazioni') renderImpostazioni();
@@ -1382,8 +1481,56 @@ document.getElementById('searchInput').addEventListener('input', renderGlobalSea
 function renderAll(){
   populateCassaSelects(); populateDepositoSelect(); populateAnagraficheDatalist();
   updatePercentualiLabelsUI();
-  renderDashboard(); renderEntrate(); renderUscite(); renderRicevute(); renderStatistiche(); renderCasse(); renderAnagrafiche(); renderBeni(); renderArchivio();
+  renderDashboard(); renderEntrate(); renderUscite(); renderRicevute(); renderStatistiche(); renderCasse(); renderAnagrafiche(); renderBeni(); renderArchivio(); renderRapportiChieseImports();
   setTimeout(function(){ resizeCharts(); }, 40);
+}
+
+var TABLE_PAGE_SIZE = 20;
+var tablePageState = {};
+function paginateArray(key, list){
+  var total = list.length;
+  var totalPages = Math.max(1, Math.ceil(total / TABLE_PAGE_SIZE));
+  var current = Number(tablePageState[key] || 1);
+  if(current<1) current = 1;
+  if(current>totalPages) current = totalPages;
+  tablePageState[key] = current;
+  var start = (current-1) * TABLE_PAGE_SIZE;
+  return {
+    items: list.slice(start, start + TABLE_PAGE_SIZE),
+    total: total,
+    current: current,
+    totalPages: totalPages,
+    start: start
+  };
+}
+function renderTablePager(tbodyEl, key, total, rerender){
+  if(!tbodyEl) return;
+  var wrap = tbodyEl.closest('.table-wrap');
+  if(!wrap) return;
+  var pagerId = 'pager_'+key;
+  var pager = document.getElementById(pagerId);
+  var pages = Math.max(1, Math.ceil(total / TABLE_PAGE_SIZE));
+  if(total<=TABLE_PAGE_SIZE){ if(pager) pager.remove(); return; }
+  if(!pager){ pager = document.createElement('div'); pager.className = 'table-pagination'; pager.id = pagerId; wrap.insertAdjacentElement('afterend', pager); }
+  var c = Number(tablePageState[key]||1);
+  pager.innerHTML = '<span class="info">'+total+' righe · pagina '+c+'/'+pages+'</span>'+
+    '<button class="btn btn-sm" data-pg="first">«</button>'+
+    '<button class="btn btn-sm" data-pg="prev">‹</button>'+
+    '<button class="btn btn-sm page-num active">'+c+'</button>'+
+    '<button class="btn btn-sm" data-pg="next">›</button>'+
+    '<button class="btn btn-sm" data-pg="last">»</button>';
+  pager.querySelectorAll('[data-pg]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var a = b.getAttribute('data-pg');
+      var cur = Number(tablePageState[key]||1);
+      if(a==='first') cur = 1;
+      else if(a==='prev') cur = Math.max(1, cur-1);
+      else if(a==='next') cur = Math.min(pages, cur+1);
+      else if(a==='last') cur = pages;
+      tablePageState[key] = cur;
+      rerender();
+    });
+  });
 }
 
 /* ================= RICERCA GLOBALE ================= */
@@ -1444,9 +1591,16 @@ function renderArchivio(){
   if(anni.length===0) anni = [new Date().getFullYear()];
   annoSel.innerHTML = anni.map(function(y){ return '<option value="'+y+'">'+y+'</option>'; }).join('');
   var rows = cache.archiviAnnuali || [];
-  body.innerHTML = rows.length===0 ? '<tr class="empty-row"><td colspan="5">Nessun anno archiviato.</td></tr>' : rows.map(function(a){
+  var pg = paginateArray('archivio', rows);
+  if(pg.total===0){
+    body.innerHTML = '<tr class="empty-row"><td colspan="5">Nessun anno archiviato.</td></tr>';
+    renderTablePager(body, 'archivio', 0, renderArchivio);
+    return;
+  }
+  body.innerHTML = pg.items.map(function(a){
     return '<tr><td>'+esc(String(a.anno||''))+'</td><td>'+(a.stato==='riaperto'?'Riaperto':'Chiuso')+'</td><td>'+(a.chiuso_il?fmtDate(String(a.chiuso_il).slice(0,10)):'—')+'</td><td>'+esc(a.note||'')+'</td><td><button class="btn btn-sm" data-arch-reopen="'+a.id+'"'+(canWrite?'':' disabled')+'>Riapri</button></td></tr>';
   }).join('');
+  renderTablePager(body, 'archivio', pg.total, renderArchivio);
   body.querySelectorAll('[data-arch-reopen]').forEach(function(b){
     b.addEventListener('click', async function(){
       if(!canWrite) return;
@@ -1751,9 +1905,11 @@ function renderBudgetCampo(){
     '<strong>Anno '+anno+'</strong> · Budget: <strong>'+fmtEUR(totaleBudget)+'</strong> · Speso: <strong>'+fmtEUR(totaleSpeso)+'</strong> · Residuo: <strong style="'+(residuo<0?'color:var(--red)':'')+'">'+fmtEUR(residuo)+'</strong> · Utilizzo: <strong>'+utilizzoTot.toFixed(1)+'%</strong>';
   if(hintEl) hintEl.textContent = 'Analisi calcolata solo sulle uscite registrate nel '+anno+'.';
 
-  budgetBody.innerHTML = riepilogo.map(function(r){
+  var pg = paginateArray('budget_'+anno, riepilogo);
+  budgetBody.innerHTML = pg.items.map(function(r){
     return '<tr'+(r.over?' style="background:var(--red-tint)"':'')+'><td>'+esc(r.categoria)+'</td><td>'+esc(r.voce)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.budget)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.speso)+'</td><td class="num" style="text-align:right;'+(r.over?'color:var(--red);font-weight:600':'')+'">'+fmtEUR(r.delta)+'</td><td class="num" style="text-align:right;'+(r.utilizzo>100?'color:var(--red);font-weight:600':'')+'">'+r.utilizzo.toFixed(1)+'%</td></tr>';
   }).join('');
+  renderTablePager(budgetBody, 'budget_'+anno, pg.total, renderBudgetCampo);
 
   drawChart('chartBudget','bar', riepilogo.map(function(r){return r.voce;}), [
     { label:'Budget', data:riepilogo.map(function(r){return r.budget;}), backgroundColor:'#B9B29B' },
@@ -1819,8 +1975,10 @@ function renderRicevute(){
     if(al && r.data>al) return false;
     return true;
   });
+  var pg = paginateArray('ricevute', list);
+  list = pg.items;
   var body = document.getElementById('ricevuteBody');
-  if(list.length===0){ body.innerHTML='<tr class="empty-row"><td colspan="8">Nessuna ricevuta trovata.</td></tr>'; return; }
+  if(pg.total===0){ body.innerHTML='<tr class="empty-row"><td colspan="8">Nessuna ricevuta trovata.</td></tr>'; renderTablePager(body, 'ricevute', 0, renderRicevute); return; }
   body.innerHTML = list.map(function(r){
     var deposito = cache.depositi.find(function(d){return d.id===r.deposito_id;});
     return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td>'+
@@ -1830,6 +1988,7 @@ function renderRicevute(){
       '<td class="row-actions">'+ricevutaActionsHtml(r.id)+'</td></tr>';
   }).join('');
   bindRicevutaRowActions(body);
+  renderTablePager(body, 'ricevute', pg.total, renderRicevute);
 }
 ['filtTipo','filtCassa','filtDal','filtAl'].forEach(function(id){ document.getElementById(id).addEventListener('input', renderRicevute); document.getElementById(id).addEventListener('change', renderRicevute); });
 
@@ -1846,14 +2005,17 @@ function renderEntrate(){
     if(q && String(r.nome||'').toLowerCase().indexOf(q)===-1) return false;
     return true;
   });
+  var pg = paginateArray('entrate', list);
+  list = pg.items;
   var body = document.getElementById('entrateBody');
   if(!body) return;
-  if(list.length===0){ body.innerHTML='<tr class="empty-row"><td colspan="7">Nessuna entrata trovata.</td></tr>'; return; }
+  if(pg.total===0){ body.innerHTML='<tr class="empty-row"><td colspan="7">Nessuna entrata trovata.</td></tr>'; renderTablePager(body, 'entrate', 0, renderEntrate); return; }
   body.innerHTML = list.map(function(r){
     var deposito = cache.depositi.find(function(d){return d.id===r.deposito_id;});
     return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td class="row-actions">'+ricevutaActionsHtml(r.id)+'</td></tr>';
   }).join('');
   bindRicevutaRowActions(body);
+  renderTablePager(body, 'entrate', pg.total, renderEntrate);
 }
 
 function renderUscite(){
@@ -1869,14 +2031,17 @@ function renderUscite(){
     if(q && String(r.nome||'').toLowerCase().indexOf(q)===-1) return false;
     return true;
   });
+  var pg = paginateArray('uscite', list);
+  list = pg.items;
   var body = document.getElementById('usciteBody');
   if(!body) return;
-  if(list.length===0){ body.innerHTML='<tr class="empty-row"><td colspan="7">Nessuna uscita trovata.</td></tr>'; return; }
+  if(pg.total===0){ body.innerHTML='<tr class="empty-row"><td colspan="7">Nessuna uscita trovata.</td></tr>'; renderTablePager(body, 'uscite', 0, renderUscite); return; }
   body.innerHTML = list.map(function(r){
     var deposito = cache.depositi.find(function(d){return d.id===r.deposito_id;});
     return '<tr><td class="num">'+esc(r.numero)+'</td><td>'+fmtDate(r.data)+'</td><td>'+esc(r.nome)+'</td><td>'+esc(cassaLabelRicevuta(r))+'</td><td>'+esc(deposito?deposito.nome:"—")+'</td><td class="num" style="text-align:right">'+fmtEUR(r.totale)+'</td><td class="row-actions">'+ricevutaActionsHtml(r.id)+'</td></tr>';
   }).join('');
   bindRicevutaRowActions(body);
+  renderTablePager(body, 'uscite', pg.total, renderUscite);
 }
 
 function bindRicevutaRowActions(container){
@@ -2018,7 +2183,10 @@ function clearRicevutaOnClose(){
 var btnScattaFoto = document.getElementById('btnScattaFoto');
 var allegatiCameraInput = document.getElementById('rAllegatiCamera');
 if(btnScattaFoto && allegatiCameraInput){
-  btnScattaFoto.addEventListener('click', function(){ allegatiCameraInput.click(); });
+  btnScattaFoto.addEventListener('click', function(){
+    if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) scannerOpen();
+    else allegatiCameraInput.click();
+  });
   allegatiCameraInput.addEventListener('change', function(){
     if(!allegatiCameraInput.files || !allegatiCameraInput.files.length) return;
     var mainInput = document.getElementById('rAllegati');
@@ -2336,15 +2504,27 @@ if(btnSyncNow){
 /* ================= CASSE E DEPOSITI ================= */
 function renderCasse(){
   var cBody = document.getElementById('casseBody');
-  cBody.innerHTML = cache.casse.length===0 ? '<tr class="empty-row"><td colspan="5">Nessuna cassa.</td></tr>' :
-    cache.casse.map(function(c){ return '<tr><td>'+esc(c.nome)+'</td><td>'+esc(c.nome_en||"—")+'</td><td>'+(Number(c.percentuale_cg)||0)+'%</td>'+
+  var pgCasse = paginateArray('casse', cache.casse);
+  if(pgCasse.total===0){
+    cBody.innerHTML = '<tr class="empty-row"><td colspan="5">Nessuna cassa.</td></tr>';
+    renderTablePager(cBody, 'casse', 0, renderCasse);
+  }else{
+    cBody.innerHTML = pgCasse.items.map(function(c){ return '<tr><td>'+esc(c.nome)+'</td><td>'+esc(c.nome_en||"—")+'</td><td>'+(Number(c.percentuale_cg)||0)+'%</td>'+
       '<td class="num" style="text-align:right">'+fmtEUR(saldoCassa(c.id))+'</td><td><button class="btn btn-sm" data-edit-cassa="'+c.id+'"'+(canWrite?'':' disabled')+'>Modifica</button></td></tr>'; }).join('');
+    renderTablePager(cBody, 'casse', pgCasse.total, renderCasse);
+  }
   cBody.querySelectorAll('[data-edit-cassa]').forEach(function(b){ b.addEventListener('click', function(){ apriCassa(b.getAttribute('data-edit-cassa')); }); });
 
   var dBody = document.getElementById('depositiBody');
-  dBody.innerHTML = cache.depositi.length===0 ? '<tr class="empty-row"><td colspan="4">Nessun deposito.</td></tr>' :
-    cache.depositi.map(function(d){ return '<tr><td>'+esc(d.nome)+'</td><td>'+(d.tipo==='banca'?'Banca':'Contanti')+'</td>'+
+  var pgDepositi = paginateArray('depositi', cache.depositi);
+  if(pgDepositi.total===0){
+    dBody.innerHTML = '<tr class="empty-row"><td colspan="4">Nessun deposito.</td></tr>';
+    renderTablePager(dBody, 'depositi', 0, renderCasse);
+  }else{
+    dBody.innerHTML = pgDepositi.items.map(function(d){ return '<tr><td>'+esc(d.nome)+'</td><td>'+(d.tipo==='banca'?'Banca':'Contanti')+'</td>'+
       '<td class="num" style="text-align:right">'+fmtEUR(saldoDeposito(d.id))+'</td><td><button class="btn btn-sm" data-edit-deposito="'+d.id+'"'+(canWrite?'':' disabled')+'>Modifica</button></td></tr>'; }).join('');
+    renderTablePager(dBody, 'depositi', pgDepositi.total, renderCasse);
+  }
   dBody.querySelectorAll('[data-edit-deposito]').forEach(function(b){ b.addEventListener('click', function(){ apriDeposito(b.getAttribute('data-edit-deposito')); }); });
 }
 function apriCassa(id){
@@ -2457,10 +2637,16 @@ function renderReport(){
   document.getElementById('reportQuotaHead').textContent = 'Quota '+destLabel;
   document.getElementById('reportHint').textContent = 'La quota '+destLabel+' è calcolata sulle entrate del periodo selezionato (non sul netto).';
   var body = document.getElementById('reportBody');
-  body.innerHTML = data.righe.length===0 ? '<tr class="empty-row"><td colspan="6">Nessuna cassa configurata per questa realtà.</td></tr>' :
-    data.righe.map(function(r){ return '<tr><td>'+esc(r.nome)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.entrate)+'</td>'+
+  var pg = paginateArray('report', data.righe);
+  if(pg.total===0){
+    body.innerHTML = '<tr class="empty-row"><td colspan="6">Nessuna cassa configurata per questa realtà.</td></tr>';
+    renderTablePager(body, 'report', 0, renderReport);
+  }else{
+    body.innerHTML = pg.items.map(function(r){ return '<tr><td>'+esc(r.nome)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.entrate)+'</td>'+
       '<td class="num" style="text-align:right">'+fmtEUR(r.uscite)+'</td><td class="num" style="text-align:right">'+fmtEUR(r.netto)+'</td>'+
       '<td>'+r.perc+'%</td><td class="num" style="text-align:right">'+fmtEUR(r.quota)+'</td></tr>'; }).join('');
+    renderTablePager(body, 'report', pg.total, renderReport);
+  }
   drawChart('chartReportCasse','bar', data.righe.map(function(r){return r.nome;}), [{ label:'Netto', data:data.righe.map(function(r){return r.netto;}), backgroundColor:data.righe.map(function(r){return r.netto>=0?'#2F6F4F':'#A13D2C';}) }]);
 
   var btnCrea = document.getElementById('btnCreaRicevutaDaReport');
@@ -2697,19 +2883,566 @@ document.getElementById('btnInviaReportCampo').addEventListener('click', async f
   showToast('Bozza uscita per Campo pronta: verifica e poi conferma manualmente.');
 });
 
+/* ================= RAPPORTI CHIESE / DECK ================= */
+function bytesHuman(n){
+  n = Number(n||0);
+  if(n>=1024*1024) return (n/(1024*1024)).toFixed(2)+' MB';
+  if(n>=1024) return (n/1024).toFixed(1)+' KB';
+  return n+' B';
+}
+function renderRapportiChieseImports(){
+  var body = document.getElementById('rapportiChieseBody');
+  if(!body) return;
+  var pg = paginateArray('rapportiChiese', churchReportImports);
+  if(pg.total===0){
+    body.innerHTML = '<tr class="empty-row"><td colspan="5">Nessun PDF importato.</td></tr>';
+    renderTablePager(body, 'rapportiChiese', 0, renderRapportiChieseImports);
+    return;
+  }
+  body.innerHTML = pg.items.map(function(r){
+    return '<tr>'+
+      '<td><input type="radio" name="rapportoSel" value="'+esc(r.id)+'"></td>'+
+      '<td>'+esc(r.name||'')+'</td>'+
+      '<td>'+(r.created_at ? new Date(r.created_at).toLocaleString('it-IT') : '—')+'</td>'+
+      '<td style="text-align:right">'+bytesHuman(r.size)+'</td>'+
+      '<td><button class="btn btn-sm btn-danger btn-ghost" data-del-rapporto="'+esc(r.id)+'">Rimuovi</button></td>'+
+    '</tr>';
+  }).join('');
+  renderTablePager(body, 'rapportiChiese', pg.total, renderRapportiChieseImports);
+  body.querySelectorAll('[data-del-rapporto]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var id = b.getAttribute('data-del-rapporto');
+      churchReportImports = churchReportImports.filter(function(x){ return String(x.id)!==String(id); });
+      saveChurchReportImports();
+      renderRapportiChieseImports();
+    });
+  });
+}
+function getSelectedRapportoImport(){
+  var el = document.querySelector('input[name="rapportoSel"]:checked');
+  if(!el) return null;
+  var id = el.value;
+  return churchReportImports.find(function(x){ return String(x.id)===String(id); }) || null;
+}
+function setRapportoParseHint(msg, tone){
+  var el = document.getElementById('rapportoParseHint');
+  if(!el) return;
+  el.textContent = msg || '';
+  if(tone==='ok') el.style.color = 'var(--green)';
+  else if(tone==='warn') el.style.color = 'var(--gold)';
+  else if(tone==='err') el.style.color = 'var(--red)';
+  else el.style.color = 'var(--ink-soft)';
+}
+function ensurePdfJs(){
+  if(window.pdfjsLib && typeof window.pdfjsLib.getDocument==='function') return Promise.resolve(true);
+  if(pdfJsLoaderPromise) return pdfJsLoaderPromise;
+  pdfJsLoaderPromise = new Promise(function(resolve){
+    var s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.async = true;
+    s.onload = function(){
+      try{
+        if(window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions){
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          resolve(true);
+          return;
+        }
+      }catch(_e){}
+      resolve(false);
+    };
+    s.onerror = function(){ resolve(false); };
+    document.head.appendChild(s);
+  }).finally(function(){
+    if(!(window.pdfjsLib && typeof window.pdfjsLib.getDocument==='function')) pdfJsLoaderPromise = null;
+  });
+  return pdfJsLoaderPromise;
+}
+function extractMaxAmountFromLine(line){
+  var matches = String(line||'').match(/\d{1,3}(?:[.\s]\d{3})*(?:,\d{2})|\d+(?:[.,]\d{2})?/g) || [];
+  var max = 0;
+  for(var i=0;i<matches.length;i++){
+    var v = Math.abs(Number(parseImporto(matches[i])||0));
+    if(v>max) max = v;
+  }
+  return max;
+}
+function rankPdfAmountCandidate(kind, lineLow){
+  var score = 0;
+  if(kind==='entrata'){
+    if(/totale\s+entrat|entrat\w*\s+totale/.test(lineLow)) score += 6;
+    if(/entrat|incass|offert|raccolt|decim|donazion/.test(lineLow)) score += 4;
+    if(/uscit|spes|quota\s*cg|conferenza\s+generale|versament/.test(lineLow)) score -= 3;
+  }else if(kind==='uscitaCg'){
+    if(/quota\s*cg|cg\s*quota|conferenza\s+generale|verso\s+cg/.test(lineLow)) score += 6;
+    if(/uscit|versament|inviat|trasferit/.test(lineLow)) score += 3;
+    if(/entrat|incass|offert|raccolt/.test(lineLow)) score -= 2;
+  }
+  return score;
+}
+function pickBestPdfAmount(lines, kind){
+  var best = null;
+  for(var i=0;i<lines.length;i++){
+    var raw = String(lines[i]||'').trim();
+    if(!raw) continue;
+    var low = raw.toLowerCase();
+    var amount = extractMaxAmountFromLine(raw);
+    if(!(amount>0)) continue;
+    var score = rankPdfAmountCandidate(kind, low);
+    if(score<=0) continue;
+    if(!best || score>best.score || (score===best.score && amount>best.amount)){
+      best = { amount:amount, score:score, line:raw };
+    }
+  }
+  return best;
+}
+async function parseChurchReportPdfAmounts(rep){
+  if(!rep || !rep.data_url) return null;
+  var ok = await ensurePdfJs();
+  if(!ok) return null;
+  var blob = dataUrlToBlob(rep.data_url);
+  if(!blob) return null;
+  var buf = await blob.arrayBuffer();
+  var task = window.pdfjsLib.getDocument({ data:buf });
+  var pdf = await task.promise;
+  var maxPages = Math.min(Number(pdf.numPages||0), 5);
+  var lines = [];
+  for(var p=1;p<=maxPages;p++){
+    var page = await pdf.getPage(p);
+    var tc = await page.getTextContent();
+    var pageLines = [];
+    (tc.items||[]).forEach(function(it){
+      if(it && typeof it.str==='string' && it.str.trim()) pageLines.push(it.str.trim());
+    });
+    lines = lines.concat(pageLines);
+  }
+  var entr = pickBestPdfAmount(lines, 'entrata');
+  var usc = pickBestPdfAmount(lines, 'uscitaCg');
+  return {
+    entrata: entr ? entr.amount : 0,
+    uscitaCg: usc ? usc.amount : 0,
+    confidence: (entr?entr.score:0) + (usc?usc.score:0),
+    sample: {
+      entrata: entr ? entr.line : '',
+      uscitaCg: usc ? usc.line : ''
+    }
+  };
+}
+async function autoFillRapportoFromPdf(rep){
+  var btn = document.getElementById('btnRapportoAutoParse');
+  try{
+    if(btn) btn.disabled = true;
+    setRapportoParseHint('Analisi PDF in corso…', '');
+    var parsed = await parseChurchReportPdfAmounts(rep);
+    if(!parsed){
+      setRapportoParseHint('Lettura PDF non disponibile su questo browser.', 'warn');
+      return;
+    }
+    var applied = 0;
+    if(Number(parsed.entrata||0)>0){ document.getElementById('rapportoEntrata').value = Number(parsed.entrata).toFixed(2); applied++; }
+    if(Number(parsed.uscitaCg||0)>0){ document.getElementById('rapportoUscitaCg').value = Number(parsed.uscitaCg).toFixed(2); applied++; }
+    if(applied===0){
+      setRapportoParseHint('Nessun importo riconosciuto con confidenza sufficiente.', 'warn');
+      return;
+    }
+    var txt = 'Importi compilati automaticamente';
+    if(parsed.sample.entrata || parsed.sample.uscitaCg) txt += ' (verifica prima di confermare).';
+    setRapportoParseHint(txt, 'ok');
+    showToast('Importi estratti dal PDF: verifica e conferma.');
+  }catch(_e){
+    setRapportoParseHint('Errore durante l\'analisi del PDF.', 'err');
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+async function fileToDataUrlWithMeta(file){
+  var data = await fileToDataUrl(file);
+  return { id: uuid4(), name:file.name, type:file.type||'application/pdf', size:file.size||0, data_url:data, created_at:new Date().toISOString() };
+}
+document.getElementById('btnImportaRapportiChiese').addEventListener('click', function(){
+  document.getElementById('fileRapportiChiese').click();
+});
+document.getElementById('fileRapportiChiese').addEventListener('change', async function(e){
+  var files = Array.from(e.target.files||[]).filter(function(f){ return /pdf$/i.test(f.name||'') || String(f.type||'').indexOf('pdf')!==-1; });
+  if(!files.length){ e.target.value=''; return; }
+  for(var i=0;i<files.length;i++){
+    var meta = await fileToDataUrlWithMeta(files[i]);
+    churchReportImports.unshift(meta);
+  }
+  saveChurchReportImports();
+  renderRapportiChieseImports();
+  e.target.value='';
+  showToast(files.length+' report importati');
+});
+
+function openAcquisisciRapportoModal(){
+  var sel = getSelectedRapportoImport();
+  if(!sel){ showToast('Seleziona prima un report PDF.'); return; }
+  document.getElementById('rapportoSelId').value = sel.id;
+  document.getElementById('rapportoSelNome').value = sel.name || '';
+  document.getElementById('rapportoData').value = todayISO();
+  document.getElementById('rapportoChiesaNome').value = (sel.name||'').replace(/\.[^.]+$/,'').replace(/[_-]+/g,' ').trim();
+  document.getElementById('rapportoEntrata').value = '0';
+  document.getElementById('rapportoUscitaCg').value = '0';
+  document.getElementById('rapportoNote').value = 'Acquisizione rapporto chiesa locale';
+
+  var opts = '<option value="">— seleziona —</option>' + cache.casse.map(function(c){ return '<option value="'+c.id+'">'+esc(c.nome)+'</option>'; }).join('');
+  document.getElementById('rapportoCassaEntrata').innerHTML = opts;
+  document.getElementById('rapportoCassaUscita').innerHTML = opts;
+  document.getElementById('rapportoDeposito').innerHTML = '<option value="">— seleziona —</option>' + cache.depositi.map(function(d){ return '<option value="'+d.id+'">'+esc(d.nome)+'</option>'; }).join('');
+  setRapportoParseHint('Estrazione semi-automatica dai testi del PDF.', '');
+  openModal('modalAcquisisciRapporto');
+  autoFillRapportoFromPdf(sel);
+}
+document.getElementById('btnAcquisisciRapportoSelezionato').addEventListener('click', openAcquisisciRapportoModal);
+document.getElementById('btnRapportoAutoParse').addEventListener('click', function(){
+  var idSel = document.getElementById('rapportoSelId').value;
+  var rep = churchReportImports.find(function(x){ return String(x.id)===String(idSel); });
+  if(!rep){ showToast('Report non trovato.'); return; }
+  autoFillRapportoFromPdf(rep);
+});
+
+document.getElementById('btnConfermaAcquisizioneRapporto').addEventListener('click', async function(){
+  if(!canWrite){ showToast('Sola lettura: acquisizione non consentita.'); return; }
+  var idSel = document.getElementById('rapportoSelId').value;
+  var rep = churchReportImports.find(function(x){ return String(x.id)===String(idSel); });
+  if(!rep){ showToast('Report non trovato.'); return; }
+  var dataMov = document.getElementById('rapportoData').value || todayISO();
+  var nomeChiesa = document.getElementById('rapportoChiesaNome').value.trim() || 'Chiesa locale';
+  var entrata = Math.abs(Number(document.getElementById('rapportoEntrata').value)||0);
+  var uscitaCg = Math.abs(Number(document.getElementById('rapportoUscitaCg').value)||0);
+  var cassaEnt = document.getElementById('rapportoCassaEntrata').value || null;
+  var cassaUsc = document.getElementById('rapportoCassaUscita').value || null;
+  var deposito = document.getElementById('rapportoDeposito').value || null;
+  var note = document.getElementById('rapportoNote').value || '';
+  if(!deposito){ showToast('Seleziona un deposito.'); return; }
+  if(entrata<=0){ showToast('Inserisci un importo di entrata valido.'); return; }
+
+  var attachments = [{ name:rep.name, type:rep.type||'application/pdf', size:rep.size||0, data_url:rep.data_url }];
+
+  var numeroEnt = await sb.rpc('genera_numero_ricevuta', { p_chiesa_id:activeChiesa.id, p_tipo:'entrata' });
+  if(numeroEnt.error || !numeroEnt.data){ showToast('Errore numerazione entrata.'); return; }
+  var ent = await sb.from('ricevute').insert({
+    chiesa_id:activeChiesa.id,
+    numero:numeroEnt.data,
+    tipo:'entrata',
+    data:dataMov,
+    nome:nomeChiesa,
+    cassa_id:cassaEnt,
+    deposito_id:deposito,
+    totale:entrata,
+    note:'[RAPPORTO CHIESA] '+note
+  }).select().single();
+  if(ent.error || !ent.data){ showToast('Errore creazione ricevuta entrata.'); return; }
+  await sb.from('righe_ricevuta').insert({ ricevuta_id:ent.data.id, descrizione:'Acquisizione rapporto chiesa locale', importo:entrata, cassa_id:cassaEnt });
+  await uploadAttachmentsOnline(ent.data.id, activeChiesa.id, attachments, { source:'import_pdf' });
+
+  if(uscitaCg>0){
+    var numeroUsc = await sb.rpc('genera_numero_ricevuta', { p_chiesa_id:activeChiesa.id, p_tipo:'uscita' });
+    if(!numeroUsc.error && numeroUsc.data){
+      var usc = await sb.from('ricevute').insert({
+        chiesa_id:activeChiesa.id,
+        numero:numeroUsc.data,
+        tipo:'uscita',
+        data:dataMov,
+        nome:'Conferenza Generale',
+        cassa_id:cassaUsc,
+        deposito_id:deposito,
+        totale:uscitaCg,
+        note:'[RAPPORTO CHIESA] Quota CG · '+note
+      }).select().single();
+      if(!usc.error && usc.data){
+        await sb.from('righe_ricevuta').insert({ ricevuta_id:usc.data.id, descrizione:'Quota CG da rapporto chiesa', importo:uscitaCg, cassa_id:cassaUsc });
+      }
+    }
+  }
+
+  churchReportImports = churchReportImports.filter(function(x){ return String(x.id)!==String(idSel); });
+  saveChurchReportImports();
+  closeModal('modalAcquisisciRapporto');
+  await loadAll();
+  showToast('Rapporto acquisito con successo');
+});
+
+function buildDeckHtml(data){
+  var totEntr = data.righe.reduce(function(s,r){ return s+Number(r.entrate||0); },0);
+  var totUsc = data.righe.reduce(function(s,r){ return s+Number(r.uscite||0); },0);
+  var totNet = data.righe.reduce(function(s,r){ return s+Number(r.netto||0); },0);
+  var rows = data.righe.map(function(r){
+    return '<tr><td>'+esc(r.nome)+'</td><td style="text-align:right">'+fmtEUR(r.entrate)+'</td><td style="text-align:right">'+fmtEUR(r.uscite)+'</td><td style="text-align:right">'+fmtEUR(r.netto)+'</td></tr>';
+  }).join('');
+  return '<div style="display:grid;gap:12px;">'+
+    '<div class="panel"><div class="panel-body"><h3 style="margin:0 0 6px">Riepilogo periodo</h3><div class="stat-row"><div class="stat"><div class="label">Entrate</div><div class="value num">'+fmtEUR(totEntr)+'</div></div><div class="stat"><div class="label">Uscite</div><div class="value num">'+fmtEUR(totUsc)+'</div></div><div class="stat"><div class="label">Netto</div><div class="value num">'+fmtEUR(totNet)+'</div></div></div></div></div>'+
+    '<div class="panel"><div class="panel-body"><h3 style="margin:0 0 6px">Dettaglio per cassa</h3><div class="table-wrap"><table><thead><tr><th>Cassa</th><th style="text-align:right">Entrate</th><th style="text-align:right">Uscite</th><th style="text-align:right">Netto</th></tr></thead><tbody>'+rows+'</tbody></table></div></div></div>'+
+  '</div>';
+}
+function renderDeckPreview(){
+  var f = validateReportFilter();
+  if(!f){ document.getElementById('deckPreview').textContent = 'Imposta prima il periodo del report.'; return; }
+  var data = computeReportData();
+  document.getElementById('deckPreview').innerHTML = buildDeckHtml(data);
+}
+function openDeckWindow(printNow){
+  var f = validateReportFilter();
+  if(!f){ showToast('Imposta prima il periodo del report.'); return; }
+  var data = computeReportData();
+  var html = '<!doctype html><html><head><meta charset="utf-8"><title>Report Assemblea</title><style>body{font-family:Arial,sans-serif;margin:18px;color:#1F2A24}.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.kpi{border:1px solid #ddd;border-radius:8px;padding:10px}.lbl{font-size:12px;color:#666}.val{font-size:22px;font-weight:700}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #ddd;padding:7px 8px}th{background:#f5f5f5;text-align:left}@media print{button{display:none}}</style></head><body>'+
+    '<h2>Report assemblea delegati</h2><p>Periodo: '+fmtDate(data.dal||'')+' → '+fmtDate(data.al||'')+'</p>'+
+    buildDeckHtml(data)+'<div style="margin-top:12px;"><button onclick="window.print()">Stampa</button></div></body></html>';
+  var w = window.open('', '_blank');
+  if(!w){ showToast('Popup bloccato'); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  if(printNow){ setTimeout(function(){ try{ w.focus(); w.print(); }catch(_e){} }, 250); }
+}
+document.getElementById('btnPreviewDeck').addEventListener('click', renderDeckPreview);
+document.getElementById('btnApriDeck').addEventListener('click', function(){ openDeckWindow(false); });
+document.getElementById('btnDeckPdf').addEventListener('click', function(){ openDeckWindow(true); });
+
+/* ================= SCANNER DOCUMENTO ================= */
+function scannerStop(){
+  try{ if(scannerState.stream) scannerState.stream.getTracks().forEach(function(t){ t.stop(); }); }catch(_e){}
+  scannerState.stream = null;
+}
+function ensureOpenCv(){
+  if(window.cv && window.cv.Mat) return Promise.resolve(true);
+  if(openCvLoaderPromise) return openCvLoaderPromise;
+  openCvLoaderPromise = new Promise(function(resolve){
+    function finish(ok){ resolve(!!ok); }
+    var s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://docs.opencv.org/4.10.0/opencv.js';
+    s.onload = function(){
+      var started = Date.now();
+      (function waitReady(){
+        if(window.cv && window.cv.Mat){ finish(true); return; }
+        if(Date.now()-started>10000){ finish(!!(window.cv && window.cv.Mat)); return; }
+        try{
+          if(window.cv && typeof window.cv.onRuntimeInitialized!=='undefined'){
+            var prev = window.cv.onRuntimeInitialized;
+            window.cv.onRuntimeInitialized = function(){
+              try{ if(typeof prev==='function') prev(); }catch(_e){}
+              finish(true);
+            };
+          }
+        }catch(_e2){}
+        setTimeout(waitReady, 120);
+      })();
+    };
+    s.onerror = function(){ finish(false); };
+    document.head.appendChild(s);
+  }).finally(function(){
+    if(!(window.cv && window.cv.Mat)) openCvLoaderPromise = null;
+  });
+  return openCvLoaderPromise;
+}
+function orderQuadPoints(pts){
+  var sortedY = pts.slice().sort(function(a,b){ return a.y===b.y ? a.x-b.x : a.y-b.y; });
+  var top = sortedY.slice(0,2).sort(function(a,b){ return a.x-b.x; });
+  var bottom = sortedY.slice(2,4).sort(function(a,b){ return a.x-b.x; });
+  var tl = top[0], tr = top[1], bl = bottom[0], br = bottom[1];
+  return [tl,tr,br,bl];
+}
+function pointDist(a,b){
+  var dx = Number(a.x)-Number(b.x), dy = Number(a.y)-Number(b.y);
+  return Math.sqrt(dx*dx + dy*dy);
+}
+async function tryAutoPerspectiveCropCanvas(canvas){
+  var ok = await ensureOpenCv();
+  if(!ok || !(window.cv && window.cv.Mat)) return false;
+  var cv = window.cv;
+  var src = null, resized = null, gray = null, blur = null, edge = null, kernel = null, contours = null, hierarchy = null, best = null, warped = null, M = null, srcTri = null, dstTri = null;
+  try{
+    var ctx = canvas.getContext('2d');
+    if(!ctx || !canvas.width || !canvas.height) return false;
+    src = cv.matFromImageData(ctx.getImageData(0,0,canvas.width,canvas.height));
+    var maxSide = Math.max(src.cols, src.rows);
+    var target = 1200;
+    var ratio = maxSide>target ? (maxSide/target) : 1;
+    resized = new cv.Mat();
+    if(ratio>1) cv.resize(src, resized, new cv.Size(Math.round(src.cols/ratio), Math.round(src.rows/ratio)), 0, 0, cv.INTER_AREA);
+    else resized = src.clone();
+
+    gray = new cv.Mat();
+    blur = new cv.Mat();
+    edge = new cv.Mat();
+    cv.cvtColor(resized, gray, cv.COLOR_RGBA2GRAY, 0);
+    cv.GaussianBlur(gray, blur, new cv.Size(5,5), 0, 0, cv.BORDER_DEFAULT);
+    cv.Canny(blur, edge, 60, 180, 3, false);
+    kernel = cv.Mat.ones(3,3,cv.CV_8U);
+    cv.dilate(edge, edge, kernel);
+
+    contours = new cv.MatVector();
+    hierarchy = new cv.Mat();
+    cv.findContours(edge, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+    var bestArea = 0;
+    var minArea = resized.cols * resized.rows * 0.2;
+    for(var i=0;i<contours.size();i++){
+      var cnt = contours.get(i);
+      var area = cv.contourArea(cnt);
+      if(area>=minArea){
+        var peri = cv.arcLength(cnt, true);
+        var approx = new cv.Mat();
+        cv.approxPolyDP(cnt, approx, 0.02*peri, true);
+        if(approx.rows===4 && area>bestArea){
+          if(best) best.delete();
+          best = approx.clone();
+          bestArea = area;
+        }
+        approx.delete();
+      }
+      cnt.delete();
+    }
+    if(!best || best.rows!==4) return false;
+
+    var pts = [];
+    for(var r=0;r<4;r++){
+      var p = best.intPtr(r,0);
+      pts.push({ x:p[0]*ratio, y:p[1]*ratio });
+    }
+    var ord = orderQuadPoints(pts);
+    var tl = ord[0], tr = ord[1], br = ord[2], bl = ord[3];
+    var dstW = Math.round(Math.max(pointDist(br,bl), pointDist(tr,tl)));
+    var dstH = Math.round(Math.max(pointDist(tr,br), pointDist(tl,bl)));
+    if(dstW<300 || dstH<300) return false;
+
+    srcTri = cv.matFromArray(4,1,cv.CV_32FC2,[tl.x,tl.y,tr.x,tr.y,br.x,br.y,bl.x,bl.y]);
+    dstTri = cv.matFromArray(4,1,cv.CV_32FC2,[0,0,dstW-1,0,dstW-1,dstH-1,0,dstH-1]);
+    M = cv.getPerspectiveTransform(srcTri, dstTri);
+    warped = new cv.Mat();
+    cv.warpPerspective(src, warped, M, new cv.Size(dstW,dstH), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+    cv.imshow(canvas, warped);
+    return true;
+  }catch(_e){
+    return false;
+  }finally{
+    if(src) src.delete();
+    if(resized) resized.delete();
+    if(gray) gray.delete();
+    if(blur) blur.delete();
+    if(edge) edge.delete();
+    if(kernel) kernel.delete();
+    if(contours) contours.delete();
+    if(hierarchy) hierarchy.delete();
+    if(best) best.delete();
+    if(warped) warped.delete();
+    if(M) M.delete();
+    if(srcTri) srcTri.delete();
+    if(dstTri) dstTri.delete();
+  }
+}
+function scannerReset(){
+  scannerState.pages = [];
+  var pages = document.getElementById('scanPages');
+  if(pages) pages.innerHTML = '';
+}
+function scannerRenderPages(){
+  var pages = document.getElementById('scanPages');
+  if(!pages) return;
+  pages.innerHTML = scannerState.pages.map(function(p,idx){
+    return '<figure style="margin:0; position:relative;"><img src="'+esc(p.preview)+'" style="width:72px;height:94px;object-fit:cover;border:1px solid #d7d7d7;border-radius:8px;"><figcaption style="position:absolute;left:4px;bottom:4px;background:#0008;color:#fff;border-radius:6px;padding:0 4px;font-size:10px">'+(idx+1)+'</figcaption><button data-scan-del="'+idx+'" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border:0;border-radius:50%;background:#A13D2C;color:#fff;cursor:pointer">✕</button></figure>';
+  }).join('');
+  pages.querySelectorAll('[data-scan-del]').forEach(function(b){
+    b.addEventListener('click', function(){
+      var i = Number(b.getAttribute('data-scan-del'));
+      scannerState.pages.splice(i,1);
+      scannerRenderPages();
+    });
+  });
+}
+async function scannerStart(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ showToast('Fotocamera non disponibile su questo dispositivo/browser.'); return false; }
+  scannerStop();
+  try{
+    var stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:'environment' } }, audio:false });
+    scannerState.stream = stream;
+    var v = document.getElementById('scanVideo');
+    v.srcObject = stream;
+    return true;
+  }catch(e){
+    showToast('Impossibile aprire la fotocamera.');
+    return false;
+  }
+}
+async function scannerCapture(){
+  var v = document.getElementById('scanVideo');
+  var c = document.getElementById('scanCanvas');
+  if(!v || !c || !v.videoWidth){ showToast('Fotocamera non pronta.'); return; }
+  var w = v.videoWidth, h = v.videoHeight;
+  c.width = w; c.height = h;
+  var x = c.getContext('2d');
+  x.drawImage(v, 0, 0, w, h);
+  var cropped = false;
+  try{ cropped = await tryAutoPerspectiveCropCanvas(c); }catch(_e){ cropped = false; }
+  w = c.width; h = c.height;
+  if(scannerState.mode==='bn'){
+    var img = x.getImageData(0,0,w,h), d=img.data;
+    for(var i=0;i<d.length;i+=4){ var g = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]; var bw = g>142?255:0; d[i]=d[i+1]=d[i+2]=bw; }
+    x.putImageData(img,0,0);
+  }
+  var dataUrl = c.toDataURL('image/jpeg', 0.9);
+  var name = 'scan_'+Date.now()+'.jpg';
+  scannerState.pages.push({ name:name, type:'image/jpeg', size:Math.round(dataUrl.length*0.75), data_url:dataUrl, preview:dataUrl });
+  scannerRenderPages();
+  if(cropped) showToast('Ritaglio prospettico automatico applicato');
+}
+function scannerOpen(){
+  scannerReset();
+  openModal('modalScanner');
+  ensureOpenCv();
+  scannerStart();
+}
+function scannerClose(){
+  scannerStop();
+  closeModal('modalScanner');
+}
+function scannerUsePagesInReceipt(){
+  if(!scannerState.pages.length){ showToast('Nessuna pagina catturata.'); return; }
+  var mainInput = document.getElementById('rAllegati');
+  var dt = new DataTransfer();
+  Array.from(mainInput.files||[]).forEach(function(f){ dt.items.add(f); });
+  scannerState.pages.forEach(function(p){
+    var blob = dataUrlToBlob(p.data_url);
+    if(!blob) return;
+    var file = new File([blob], p.name, { type:p.type||'image/jpeg' });
+    dt.items.add(file);
+  });
+  mainInput.files = dt.files;
+  scannerClose();
+  showToast(scannerState.pages.length+' pagina/e aggiunte agli allegati');
+  scannerReset();
+}
+document.getElementById('btnScanStart').addEventListener('click', scannerStart);
+document.getElementById('btnScanShot').addEventListener('click', scannerCapture);
+document.getElementById('btnScanBn').addEventListener('click', function(){ scannerState.mode='bn'; showToast('Filtro bianco/nero attivo'); });
+document.getElementById('btnScanColor').addEventListener('click', function(){ scannerState.mode='color'; showToast('Filtro colore attivo'); });
+document.getElementById('btnChiudiScanner').addEventListener('click', scannerClose);
+document.getElementById('btnScanAnnulla').addEventListener('click', scannerClose);
+document.getElementById('btnScanUsa').addEventListener('click', scannerUsePagesInReceipt);
+var modalScannerEl = document.getElementById('modalScanner');
+if(modalScannerEl){
+  modalScannerEl.addEventListener('click', function(e){ if(e.target===modalScannerEl) scannerClose(); });
+}
+
 /* ================= ANAGRAFICHE ================= */
 function renderAnagrafiche(){
   var tipo = document.getElementById('filtAnagTipo').value, q=document.getElementById('filtAnagNome').value.trim().toLowerCase();
   var list = cache.anagrafiche.filter(function(a){ if(tipo && a.tipo!==tipo) return false; if(q && a.nome.toLowerCase().indexOf(q)===-1) return false; return true; });
   var body = document.getElementById('anagraficheBody');
-  body.innerHTML = list.length===0 ? '<tr class="empty-row"><td colspan="7">Nessun nominativo trovato.</td></tr>' :
-    list.map(function(a){
+  var pg = paginateArray('anagrafiche', list);
+  if(pg.total===0){
+    body.innerHTML = '<tr class="empty-row"><td colspan="7">Nessun nominativo trovato.</td></tr>';
+    renderTablePager(body, 'anagrafiche', 0, renderAnagrafiche);
+    return;
+  }
+  body.innerHTML = pg.items.map(function(a){
       var ric = cache.ricevute.filter(function(r){return r.nome.toLowerCase()===a.nome.toLowerCase();});
       var tot = ric.reduce(function(s,r){return s+(r.tipo==='entrata'?1:-1)*Number(r.totale||0);},0);
       var tipoLabel = a.tipo==='membro'?'Membro':(a.tipo==='ospite'?'Ospite':'Fornitore');
       return '<tr><td>'+esc(a.nome)+'</td><td>'+tipoLabel+'</td><td>'+esc(a.telefono||'—')+'</td><td>'+(a.membro_da?fmtDate(a.membro_da):'—')+'</td>'+
         '<td class="num">'+ric.length+'</td><td class="num">'+fmtEUR(tot)+'</td><td><button class="btn btn-sm" data-edit-anag="'+a.id+'"'+(canWrite?'':' disabled')+'>Modifica</button></td></tr>';
     }).join('');
+  renderTablePager(body, 'anagrafiche', pg.total, renderAnagrafiche);
   body.querySelectorAll('[data-edit-anag]').forEach(function(b){ b.addEventListener('click', function(){ apriAnagrafica(b.getAttribute('data-edit-anag')); }); });
 }
 ['filtAnagTipo','filtAnagNome'].forEach(function(id){ document.getElementById(id).addEventListener('input', renderAnagrafiche); document.getElementById(id).addEventListener('change', renderAnagrafiche); });
@@ -2755,14 +3488,20 @@ function renderBeni(){
   var stato = document.getElementById('filtBeniStato').value;
   var list = cache.beni.filter(function(b){ return !stato || b.stato===stato; });
   var body = document.getElementById('beniBody');
-  body.innerHTML = list.length===0 ? '<tr class="empty-row"><td colspan="8">Nessun bene registrato.</td></tr>' :
-    list.map(function(b){
+  var pg = paginateArray('beni', list);
+  if(pg.total===0){
+    body.innerHTML = '<tr class="empty-row"><td colspan="8">Nessun bene registrato.</td></tr>';
+    renderTablePager(body, 'beni', 0, renderBeni);
+    return;
+  }
+  body.innerHTML = pg.items.map(function(b){
       var statoLabel = b.stato==='esistente'?'Esistente':(b.stato==='venduto'?'Venduto':'Rottamato');
       return '<tr><td>'+(b.foto_url?'<img class="thumb" data-foto-id="'+b.id+'">':'')+'</td>'+
         '<td>'+esc(b.descrizione)+'</td><td>'+esc(b.categoria||'—')+'</td><td>'+(b.data_acquisto?fmtDate(b.data_acquisto):'—')+'</td>'+
         '<td class="num">'+(b.quantita||1)+'</td><td class="num" style="text-align:right">'+fmtEUR(b.valore)+'</td><td>'+statoLabel+'</td>'+
         '<td><button class="btn btn-sm" data-edit-bene="'+b.id+'"'+(canWrite?'':' disabled')+'>Modifica</button></td></tr>';
     }).join('');
+  renderTablePager(body, 'beni', pg.total, renderBeni);
   body.querySelectorAll('[data-edit-bene]').forEach(function(bt){ bt.addEventListener('click', function(){ apriBene(bt.getAttribute('data-edit-bene')); }); });
   body.querySelectorAll('[data-foto-id]').forEach(async function(img){
     var b = cache.beni.find(function(x){return x.id===img.getAttribute('data-foto-id');});
@@ -3124,13 +3863,36 @@ document.getElementById('btnImpAnteprima').addEventListener('click', function(){
     var valida = !!(dataISO && nome && importo>0 && (tipo==='entrata'||tipo==='uscita') && depositoOk && cassaOk);
     return { idReg:idReg, dataISO:dataISO, tipo:tipo, nome:nome, depositoNome:depositoNome, depositoMatch:depositoMatch, cassaNome:cassaNome, cassaMatch:cassaMatch, importo:importo, note:note, valida:valida };
   });
+  var validCount = preview.filter(function(p){return p.valida;}).length;
+  var legacyDetected = idxFallback.id_reg!==-1 && idxFallback.tipo!==-1 && idxFallback.deposito!==-1;
+  document.getElementById('impRiepilogo').textContent = preview.length+' righe lette, '+validCount+' pronte per l\'import (le righe senza spunta non verranno importate).'+(legacyDetected ? ' Preset legacy rilevato: Movimento→Tipo e pagamento→Deposito.' : '');
+  window._impPreviewData = preview;
+  window._impPreviewSelection = {};
+  preview.forEach(function(p, i){ window._impPreviewSelection[i] = !!p.valida; });
+  renderImportPreviewTable();
+  document.getElementById('impStep1').style.display='none'; document.getElementById('impStep2').style.display='block';
+  document.getElementById('impStep1Tab').classList.remove('active'); document.getElementById('impStep2Tab').classList.add('active');
+  document.getElementById('btnImpConferma').style.display='inline-flex';
+});
+function renderImportPreviewTable(){
+  var preview = window._impPreviewData || [];
+  var selection = window._impPreviewSelection || {};
   var body = document.getElementById('impPreviewBody');
-  body.innerHTML = preview.map(function(p,i){
-    var depLabel = p.depositoMatch ? esc(p.depositoMatch.nome) : (autoCreate && p.depositoNome ? ('<span style="color:var(--gold)">'+esc(p.depositoNome)+' (da creare)</span>') : '<span style="color:var(--red)">non trovato</span>');
-    var cassaLabel = p.cassaNome ? (p.cassaMatch ? esc(p.cassaMatch.nome) : (autoCreate ? '<span style="color:var(--gold)">'+esc(p.cassaNome)+' (da creare)</span>' : '<span style="color:var(--red)">non trovata</span>')) : '—';
+  if(!body) return;
+  var pg = paginateArray('importPreview', preview.map(function(p, i){ return { row:p, idx:i }; }));
+  if(pg.total===0){
+    body.innerHTML = '<tr class="empty-row"><td colspan="8">Nessuna riga di anteprima.</td></tr>';
+    renderTablePager(body, 'importPreview', 0, renderImportPreviewTable);
+    return;
+  }
+  body.innerHTML = pg.items.map(function(w){
+    var p = w.row;
+    var i = w.idx;
+    var depLabel = p.depositoMatch ? esc(p.depositoMatch.nome) : (document.getElementById('impAutoCreateMissing').checked && p.depositoNome ? ('<span style="color:var(--gold)">'+esc(p.depositoNome)+' (da creare)</span>') : '<span style="color:var(--red)">non trovato</span>');
+    var cassaLabel = p.cassaNome ? (p.cassaMatch ? esc(p.cassaMatch.nome) : (document.getElementById('impAutoCreateMissing').checked ? '<span style="color:var(--gold)">'+esc(p.cassaNome)+' (da creare)</span>' : '<span style="color:var(--red)">non trovata</span>')) : '—';
     var noteLabel = (p.idReg ? ('['+esc(p.idReg)+'] ') : '') + esc(p.note);
     return '<tr>'+
-      '<td><input type="checkbox" class="imp-check" data-i="'+i+'" '+(p.valida?'checked':'')+'></td>'+
+      '<td><input type="checkbox" class="imp-check" data-i="'+i+'" '+(selection[i]?'checked':'')+'></td>'+
       '<td>'+(p.dataISO?fmtDate(p.dataISO):'<span style="color:var(--red)">manca</span>')+'</td>'+
       '<td>'+(p.tipo||'<span style="color:var(--red)">?</span>')+'</td>'+
       '<td>'+esc(p.nome||'')+'</td>'+
@@ -3139,14 +3901,15 @@ document.getElementById('btnImpAnteprima').addEventListener('click', function(){
       '<td class="num" style="text-align:right">'+fmtEUR(p.importo)+'</td>'+
       '<td>'+noteLabel+'</td></tr>';
   }).join('');
-  var validCount = preview.filter(function(p){return p.valida;}).length;
-  var legacyDetected = idxFallback.id_reg!==-1 && idxFallback.tipo!==-1 && idxFallback.deposito!==-1;
-  document.getElementById('impRiepilogo').textContent = preview.length+' righe lette, '+validCount+' pronte per l\'import (le righe senza spunta non verranno importate).'+(legacyDetected ? ' Preset legacy rilevato: Movimento→Tipo e pagamento→Deposito.' : '');
-  window._impPreviewData = preview;
-  document.getElementById('impStep1').style.display='none'; document.getElementById('impStep2').style.display='block';
-  document.getElementById('impStep1Tab').classList.remove('active'); document.getElementById('impStep2Tab').classList.add('active');
-  document.getElementById('btnImpConferma').style.display='inline-flex';
-});
+  renderTablePager(body, 'importPreview', pg.total, renderImportPreviewTable);
+  body.querySelectorAll('.imp-check').forEach(function(chk){
+    chk.addEventListener('change', function(){
+      var idx = Number(chk.getAttribute('data-i'));
+      selection[idx] = chk.checked;
+      window._impPreviewSelection = selection;
+    });
+  });
+}
 function normalizzaData(s){
   if(!s) return '';
   s = s.trim();
@@ -3160,11 +3923,16 @@ function normalizzaData(s){
 }
 document.getElementById('btnImpConferma').addEventListener('click', async function(){
   var preview = window._impPreviewData || [];
-  var checks = document.querySelectorAll('.imp-check');
+  var selection = window._impPreviewSelection || {};
   var autoCreate = document.getElementById('impAutoCreateMissing').checked;
   var daImportare = [], scartate = 0;
-  checks.forEach(function(chk){ var i=Number(chk.getAttribute('data-i')); if(chk.checked && preview[i] && preview[i].valida) daImportare.push(preview[i]); else if(chk.checked) scartate++; });
-  scartate += preview.length - checks.length;
+  preview.forEach(function(p, i){
+    if(selection[i]){
+      if(p && p.valida) daImportare.push(p);
+      else scartate++;
+    }
+  });
+  scartate += preview.length - Object.keys(selection).filter(function(k){ return !!selection[k]; }).length;
 
   if(autoCreate){
     var depMap = {};
