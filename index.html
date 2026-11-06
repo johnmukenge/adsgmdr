@@ -868,6 +868,21 @@ function syncRetryDelayMs(retryCount){
 function sanitizeFileName(name){
   return String(name||'file').replace(/[^a-zA-Z0-9._-]+/g,'_');
 }
+function explainStorageUploadError(err){
+  var raw = String((err && (err.message || err.error || err.error_description || err.details)) || '').trim();
+  var low = raw.toLowerCase();
+  if(low.indexOf('bucket')!==-1 && low.indexOf('not')!==-1 && low.indexOf('found')!==-1){
+    return 'Bucket "ricevute-allegati" non trovato.';
+  }
+  if(low.indexOf('row-level security')!==-1 || low.indexOf('violates row-level security')!==-1 || low.indexOf('policy')!==-1){
+    return 'Permessi Storage mancanti per il bucket "ricevute-allegati".';
+  }
+  if(low.indexOf('payload too large')!==-1 || low.indexOf('too large')!==-1 || low.indexOf('entity too large')!==-1){
+    return 'Allegato troppo grande per il limite del bucket.';
+  }
+  if(raw) return raw;
+  return 'Errore upload allegato (Storage).';
+}
 function dataUrlToBlob(dataUrl){
   var parts = String(dataUrl||'').split(',');
   if(parts.length<2) return null;
@@ -908,7 +923,9 @@ async function uploadAttachmentsOnline(ricevutaId, chiesaId, attachments){
     if(!blob) continue;
     var path = chiesaId+'/'+ricevutaId+'/'+Date.now()+'_'+i+'_'+fileName;
     var up = await sb.storage.from('ricevute-allegati').upload(path, blob, { contentType: a.type || blob.type || 'application/octet-stream', upsert:false });
-    if(up.error) throw up.error;
+    if(up.error){
+      throw new Error('Allegato "'+fileName+'": '+explainStorageUploadError(up.error));
+    }
     var ins = await sb.from('ricevute_allegati').insert({
       chiesa_id: chiesaId,
       ricevuta_id: ricevutaId,
@@ -1972,7 +1989,11 @@ document.getElementById('btnConfermaRicevuta').addEventListener('click', async f
       if(insRigheRes.error){ showToast('Errore salvataggio righe ricevuta'); return; }
 
       if(allegatiFiles.length){
-        await uploadAttachmentsOnline(id, activeChiesa.id, allegatiFiles.map(function(f){ return { file:f, name:f.name, type:f.type, size:f.size }; }));
+        try{
+          await uploadAttachmentsOnline(id, activeChiesa.id, allegatiFiles.map(function(f){ return { file:f, name:f.name, type:f.type, size:f.size }; }));
+        }catch(attErr){
+          showToast('Ricevuta aggiornata, ma upload allegato fallito: '+(attErr && attErr.message ? attErr.message : 'verifica bucket/policy Storage'));
+        }
       }
     } else {
       var numeroGen = null, errNum = null;
@@ -1997,7 +2018,11 @@ document.getElementById('btnConfermaRicevuta').addEventListener('click', async f
       if(insRigheNewRes.error){ showToast('Errore salvataggio righe ricevuta'); return; }
 
       if(allegatiFiles.length){
-        await uploadAttachmentsOnline(nuova.id, activeChiesa.id, allegatiFiles.map(function(f){ return { file:f, name:f.name, type:f.type, size:f.size }; }));
+        try{
+          await uploadAttachmentsOnline(nuova.id, activeChiesa.id, allegatiFiles.map(function(f){ return { file:f, name:f.name, type:f.type, size:f.size }; }));
+        }catch(attErr2){
+          showToast('Ricevuta salvata, ma upload allegato fallito: '+(attErr2 && attErr2.message ? attErr2.message : 'verifica bucket/policy Storage'));
+        }
       }
 
       try{ await ensureAnagrafica(nome, tipo==='entrata'?'ospite':'fornitore'); }catch(_e){}
@@ -2007,7 +2032,8 @@ document.getElementById('btnConfermaRicevuta').addEventListener('click', async f
     try{ await loadAll(); }catch(_e){}
     showToast('Ricevuta salvata');
   }catch(e){
-    showToast(salvata ? 'Ricevuta salvata (aggiornamento schermata non completo)' : 'Errore nel salvataggio');
+    var msg = e && e.message ? String(e.message) : '';
+    showToast(salvata ? 'Ricevuta salvata (aggiornamento schermata non completo)' : (msg || 'Errore nel salvataggio'));
   }finally{
     savingRicevuta = false;
     setRicevutaSaving(false);
