@@ -214,6 +214,7 @@
       <li class="nav-item" data-section="anagrafiche"><span class="nav-icon">👥</span> Anagrafiche</li>
       <li class="nav-item" data-section="beni"><span class="nav-icon">🏛️</span> Registro beni</li>
       <li class="nav-item" data-section="backup"><span class="nav-icon">☁️</span> Dati e backup</li>
+      <li class="nav-item" data-section="archivio"><span class="nav-icon">📦</span> Archivio</li>
       <li class="nav-item" data-section="impostazioni"><span class="nav-icon">⚙️</span> Impostazioni</li>
       <li class="nav-item" data-section="assistenza"><span class="nav-icon">🆘</span> Assistenza</li>
     </ul>
@@ -228,6 +229,7 @@
       <button class="nav-mobile-toggle" id="navToggle" aria-label="Menu">☰</button>
       <h1 id="topTitle">Dashboard</h1>
       <div class="topbar-right">
+        <button class="btn btn-sm" id="btnGlobalSearch">🔍 Cerca</button>
         <select class="chiesa-select" id="chiesaSelect" style="display:none;"></select>
         <span class="badge-sync" id="syncBadge" style="display:none;">🔄 Sync</span>
         <span class="badge-readonly" id="readonlyBadge" style="display:none;">🔒 Sola lettura</span>
@@ -328,6 +330,9 @@
         <div class="action-row">
           <button class="btn btn-primary" id="btnNuovaEntrata">➕ Nuova entrata</button>
           <button class="btn btn-danger" id="btnNuovaUscita">➖ Nuova uscita</button>
+          <button class="btn" id="btnRicevuteStampa">🖨️ Stampa elenco</button>
+          <button class="btn" id="btnRicevutePdf">📄 PDF elenco</button>
+          <button class="btn" id="btnRicevuteCondividi">📲 Condividi elenco</button>
         </div>
         <div class="panel"><div class="panel-body">
           <div class="filters">
@@ -414,6 +419,26 @@
         </div>
       </section>
 
+      <!-- ARCHIVIO -->
+      <section class="section" id="sec-archivio">
+        <div class="panel">
+          <div class="panel-head"><h2>📦 Archivio annuale</h2></div>
+          <div class="panel-body">
+            <p class="hint">Chiudi un anno per marcarlo come archiviato. I dati restano consultabili e non vengono cancellati.</p>
+            <div class="action-row" style="margin-top:10px;">
+              <select id="archAnnoSelect"></select>
+              <button class="btn btn-primary" id="btnArchiviaAnno">Archivia anno</button>
+            </div>
+            <div class="table-wrap" style="margin-top:12px;">
+              <table>
+                <thead><tr><th>Anno</th><th>Stato</th><th>Chiuso il</th><th>Note</th><th></th></tr></thead>
+                <tbody id="archivioBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- IMPOSTAZIONI -->
       <section class="section" id="sec-impostazioni">
         <div class="panel"><div class="panel-head"><h2>Dati della chiesa e numerazione</h2></div>
@@ -428,8 +453,20 @@
               <div class="field"><label>Zeri davanti al numero</label><select id="setZeri"><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div>
               <div class="field"><label>Firma tesoriere (immagine)</label><input id="setFirmaFile" type="file" accept="image/*"><img id="setFirmaPreview" class="brand-preview" alt="Firma tesoriere" style="margin-top:6px; display:none;"><button class="btn btn-sm" type="button" id="btnRimuoviFirma" style="margin-top:6px; display:none;">Rimuovi firma</button></div>
               <div class="field"><label>Timbro chiesa (immagine)</label><input id="setTimbroFile" type="file" accept="image/*"><img id="setTimbroPreview" class="brand-preview" alt="Timbro chiesa" style="margin-top:6px; display:none;"><button class="btn btn-sm" type="button" id="btnRimuoviTimbro" style="margin-top:6px; display:none;">Rimuovi timbro</button></div>
+              <div class="field"><label>Lingua interfaccia</label><select id="setUiLang"><option value="it-IT">Italiano</option><option value="en-GB">English</option><option value="es-ES">Español</option><option value="ro-RO">Română</option></select></div>
+              <div class="field"><label>Valuta</label><select id="setUiCurrency"><option value="EUR">Euro (€)</option><option value="USD">US Dollar ($)</option><option value="GBP">Pound (£)</option></select></div>
             </div>
             <button class="btn btn-primary" id="btnSalvaImpostazioni" style="margin-top:10px;">Salva impostazioni</button>
+            <div class="panel" style="margin-top:12px;">
+              <div class="panel-head"><h2>🔒 Blocco all'apertura</h2></div>
+              <div class="panel-body">
+                <div class="field"><label><input type="checkbox" id="setLockEnabled"> Attiva blocco con PIN</label></div>
+                <div class="field"><label>PIN (min 4 cifre)</label><input type="password" id="setLockPin" placeholder="••••" inputmode="numeric" autocomplete="new-password"></div>
+                <div class="field"><label>Riblocca dopo inattività</label><select id="setLockTimeoutMin"><option value="0">Mai</option><option value="1">1 minuto</option><option value="5">5 minuti</option><option value="15">15 minuti</option><option value="30">30 minuti</option><option value="60">1 ora</option></select></div>
+                <button class="btn" id="btnSalvaLock">Aggiorna blocco</button>
+                <p class="hint" style="margin-top:8px;">Il blocco è locale al browser/dispositivo corrente.</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -533,6 +570,7 @@
     <div class="field"><label>Dettaglio righe (ogni riga con tipo, cassa e importo)</label><div class="righe-list" id="righeList"></div><button class="btn btn-sm" id="btnAggiungiRiga">+ Aggiungi riga</button></div>
     <div class="totale-box"><span>Totale ricevuta</span><span class="num" id="rTotale">0,00 €</span></div>
     <div class="field"><label>Allegati (scanner/foto/PDF)</label><input type="file" id="rAllegati" accept="image/*,application/pdf" multiple><p class="hint">Se sei offline, gli allegati vengono messi in coda e caricati appena torni online.</p></div>
+    <div class="action-row" style="margin-top:8px;"><button class="btn btn-sm" type="button" id="btnScattaFoto">📷 Scatta foto documento</button><input type="file" id="rAllegatiCamera" accept="image/*" capture="environment" style="display:none"></div>
     <div class="field"><label>Note</label><textarea id="rNote"></textarea></div>
   </div>
   <div class="modal-foot">
@@ -627,6 +665,27 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- MODAL RICERCA GLOBALE -->
+<div class="modal-backdrop" id="modalSearch"><div class="modal wide">
+  <div class="modal-head"><h3>🔍 Cerca dappertutto</h3><button class="modal-close" data-close>✕</button></div>
+  <div class="modal-body">
+    <div class="field"><label>Ricerca</label><input type="text" id="searchInput" placeholder="Ricevute, nomi, casse, beni, guida…"></div>
+    <div id="searchResults" class="table-wrap" style="max-height:420px; overflow:auto;"></div>
+  </div>
+  <div class="modal-foot"><button class="btn" data-close>Chiudi</button></div>
+</div></div>
+
+<!-- SCHERMATA BLOCCO -->
+<div id="lockScreen" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(20,24,26,.88);z-index:2000;">
+  <div style="width:min(92vw,360px);background:#fff;border-radius:14px;padding:18px;box-shadow:0 16px 50px rgba(0,0,0,.25)">
+    <h3 style="margin:0 0 8px;">🔒 Blocco attivo</h3>
+    <p class="hint" style="margin:0 0 10px;">Inserisci il PIN per continuare.</p>
+    <div class="field"><label>PIN</label><input type="password" id="lockPinInput" inputmode="numeric" autocomplete="off"></div>
+    <div class="action-row" style="margin-top:10px;"><button class="btn btn-primary" id="btnUnlock">Sblocca</button></div>
+    <div class="hint" id="lockErr" style="color:#A13D2C; margin-top:8px;"></div>
+  </div>
+</div>
+
 <script>
 (function(){
 "use strict";
@@ -641,7 +700,7 @@ var sb = window.supabase.createClient(window.ADSGMDR_CONFIG.supabaseUrl, window.
 
 var profile = null, profileRoles = [], activeChiesa = null, chieseDisponibili = [];
 var canWrite = false;
-var cache = { casse:[], depositi:[], ricevute:[], anagrafiche:[], beni:[], budgetAnnuali:[], percentualiReport:[] };
+var cache = { casse:[], depositi:[], ricevute:[], anagrafiche:[], beni:[], budgetAnnuali:[], percentualiReport:[], archiviAnnuali:[] };
 var charts = {};
 var chartScriptLoaderPromise = null;
 var realtimeChannel = null;
@@ -656,17 +715,27 @@ var MAX_SYNC_RETRY = 8;
 var SIGNATURE_KEY_PREFIX = 'adsgmdr_signature_';
 var STAMP_KEY_PREFIX = 'adsgmdr_stamp_';
 var brandingAssets = { firma:null, timbro:null };
+var UI_SETTINGS_KEY_PREFIX = 'adsgmdr_ui_settings_';
+var LOCK_SETTINGS_KEY_PREFIX = 'adsgmdr_lock_settings_';
+var uiSettings = { lang:'it-IT', currency:'EUR' };
+var lockSettings = { enabled:false, hash:'', timeoutMin:0 };
+var lastUserActivityTs = Date.now();
+var lockTimerHandle = null;
 
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function fmtEUR(n){
   var num = Number(n);
   if(!isFinite(num)) num = 0;
   try{
-    return new Intl.NumberFormat('it-IT', {
+    var lang = (uiSettings && uiSettings.lang) || 'it-IT';
+    var currency = (uiSettings && uiSettings.currency) || 'EUR';
+    return new Intl.NumberFormat(lang, {
+      style:'currency',
+      currency:currency,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
       useGrouping: true
-    }).format(num) + ' €';
+    }).format(num);
   }catch(_e){
     var fixed = (Math.round(num * 100) / 100).toFixed(2);
     var parts = fixed.split('.');
@@ -700,6 +769,64 @@ document.querySelectorAll('.modal-backdrop').forEach(function(bd){
 function churchScopedKey(prefix){
   var cid = activeChiesa && activeChiesa.id ? String(activeChiesa.id) : 'global';
   return prefix + cid;
+}
+function readScopedJson(prefix, fallback){
+  try{
+    var raw = localStorage.getItem(churchScopedKey(prefix));
+    if(!raw) return fallback;
+    var obj = JSON.parse(raw);
+    return (obj && typeof obj==='object') ? obj : fallback;
+  }catch(_e){ return fallback; }
+}
+function saveScopedJson(prefix, obj){
+  try{ localStorage.setItem(churchScopedKey(prefix), JSON.stringify(obj||{})); }catch(_e){}
+}
+function applyUiSettings(){
+  var langEl = document.getElementById('setUiLang');
+  var currEl = document.getElementById('setUiCurrency');
+  if(langEl) langEl.value = (uiSettings && uiSettings.lang) || 'it-IT';
+  if(currEl) currEl.value = (uiSettings && uiSettings.currency) || 'EUR';
+}
+function hashPin(pin){ return btoa(unescape(encodeURIComponent(String(pin||'')))); }
+function readLockSettings(){
+  var d = readScopedJson(LOCK_SETTINGS_KEY_PREFIX, { enabled:false, hash:'', timeoutMin:0 });
+  lockSettings = {
+    enabled: !!d.enabled,
+    hash: String(d.hash||''),
+    timeoutMin: Number(d.timeoutMin||0)
+  };
+  var en = document.getElementById('setLockEnabled');
+  var to = document.getElementById('setLockTimeoutMin');
+  if(en) en.checked = lockSettings.enabled;
+  if(to) to.value = String(lockSettings.timeoutMin||0);
+}
+function touchActivity(){ lastUserActivityTs = Date.now(); }
+function lockScreenOpen(){
+  var el = document.getElementById('lockScreen');
+  if(!el) return;
+  el.style.display = 'flex';
+  var pin = document.getElementById('lockPinInput');
+  var err = document.getElementById('lockErr');
+  if(err) err.textContent = '';
+  if(pin){ pin.value=''; setTimeout(function(){ pin.focus(); }, 30); }
+}
+function lockScreenClose(){
+  var el = document.getElementById('lockScreen');
+  if(el) el.style.display = 'none';
+}
+function isLockedVisible(){
+  var el = document.getElementById('lockScreen');
+  return !!(el && el.style.display==='flex');
+}
+function evaluateAutoLock(){
+  if(!lockSettings.enabled || !lockSettings.hash || isLockedVisible()) return;
+  var t = Number(lockSettings.timeoutMin||0);
+  if(t<=0) return;
+  if(Date.now() - Number(lastUserActivityTs||0) >= t*60000) lockScreenOpen();
+}
+function scheduleLockTimer(){
+  if(lockTimerHandle) clearInterval(lockTimerHandle);
+  lockTimerHandle = setInterval(evaluateAutoLock, 15000);
 }
 function setImagePreview(imgEl, btnEl, dataUrl){
   if(!imgEl) return;
@@ -1145,6 +1272,9 @@ async function setActiveChiesa(chiesaId){
   activeChiesa = chiesa;
   var isOwnChiesa = String(profile && profile.chiesa_id || '')===String(chiesaId||'');
   canWrite = isAdminOnly() || (hasRole('tesoriere_chiesa') && isOwnChiesa) || (isCampo() && isOwnChiesa);
+  uiSettings = Object.assign({ lang:'it-IT', currency:'EUR' }, readScopedJson(UI_SETTINGS_KEY_PREFIX, { lang:'it-IT', currency:'EUR' }));
+  applyUiSettings();
+  readLockSettings();
   document.getElementById('fieldNameLabel').textContent = chiesa ? chiesa.nome : 'Tesoreria';
   document.getElementById('readonlyBadge').style.display = canWrite ? 'none' : 'inline-flex';
   document.querySelectorAll('.btn-primary, .btn-danger').forEach(function(b){
@@ -1156,6 +1286,9 @@ async function setActiveChiesa(chiesaId){
   subscribeRealtime();
   await syncOfflineQueue();
   updateSyncBadge();
+  touchActivity();
+  scheduleLockTimer();
+  if(lockSettings.enabled && lockSettings.hash) lockScreenOpen();
 }
 
 /* ================= CARICAMENTO DATI ================= */
@@ -1202,6 +1335,12 @@ async function loadAll(){
     }catch(e){
       cache.percentualiReport = [];
     }
+    try{
+      var { data: arch } = await sb.from('archivi_annuali').select('*').eq('chiesa_id', cid).order('anno', {ascending:false});
+      cache.archiviAnnuali = arch || [];
+    }catch(e){
+      cache.archiviAnnuali = [];
+    }
   }catch(err){
     showToast('Modalità offline: visualizzo cache locale e bozze in coda.');
   }
@@ -1217,7 +1356,7 @@ function subscribeRealtime(){
 }
 
 /* ================= NAVIGAZIONE ================= */
-var sectionTitles = { dashboard:"Dashboard", entrate:"Entrate", uscite:"Uscite", ricevute:"Ricevute", statistiche:"Statistiche", casse:"Casse e depositi", report:"Report per cassa", anagrafiche:"Anagrafiche", beni:"Registro beni", backup:"Dati e backup", impostazioni:"Impostazioni", assistenza:"Assistenza" };
+var sectionTitles = { dashboard:"Dashboard", entrate:"Entrate", uscite:"Uscite", ricevute:"Ricevute", statistiche:"Statistiche", casse:"Casse e depositi", report:"Report per cassa", anagrafiche:"Anagrafiche", beni:"Registro beni", backup:"Dati e backup", archivio:"Archivio", impostazioni:"Impostazioni", assistenza:"Assistenza" };
 function goSection(name){
   document.querySelectorAll('.section').forEach(function(s){ s.classList.remove('active'); });
   document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
@@ -1227,17 +1366,95 @@ function goSection(name){
   document.getElementById('nav').classList.remove('open');
   if(name==='report') updateReportActionsUI();
   if(name==='statistiche') renderStatistiche();
+  if(name==='archivio') renderArchivio();
   if(name==='impostazioni') renderImpostazioni();
   setTimeout(function(){ resizeCharts(); }, 40);
 }
 document.querySelectorAll('.nav-item').forEach(function(item){ item.addEventListener('click', function(){ goSection(item.getAttribute('data-section')); }); });
 document.getElementById('navToggle').addEventListener('click', function(){ document.getElementById('nav').classList.toggle('open'); });
+document.getElementById('btnGlobalSearch').addEventListener('click', openGlobalSearch);
+document.getElementById('searchInput').addEventListener('input', renderGlobalSearch);
+
+['click','keydown','mousemove','touchstart'].forEach(function(ev){
+  document.addEventListener(ev, touchActivity, { passive:true });
+});
 
 function renderAll(){
   populateCassaSelects(); populateDepositoSelect(); populateAnagraficheDatalist();
   updatePercentualiLabelsUI();
-  renderDashboard(); renderEntrate(); renderUscite(); renderRicevute(); renderStatistiche(); renderCasse(); renderAnagrafiche(); renderBeni();
+  renderDashboard(); renderEntrate(); renderUscite(); renderRicevute(); renderStatistiche(); renderCasse(); renderAnagrafiche(); renderBeni(); renderArchivio();
   setTimeout(function(){ resizeCharts(); }, 40);
+}
+
+/* ================= RICERCA GLOBALE ================= */
+var HELP_TOPICS = [
+  { id:'h1', title:'Registrare una ricevuta', text:'Apri Ricevute, scegli entrata/uscita, compila le righe e conferma.', section:'ricevute' },
+  { id:'h2', title:'Sincronizzazione offline', text:'Le operazioni offline vanno in coda e si sincronizzano quando torni online.', section:'backup' },
+  { id:'h3', title:'Report per cassa', text:'Imposta Dal/Al e usa Elabora report per quote e netto.', section:'report' },
+  { id:'h4', title:'Ruoli e permessi', text:'Consulta Assistenza per differenze tra admin, tesoriere e lettori.', section:'assistenza' }
+];
+function containsQuery(text, q){ return String(text||'').toLowerCase().indexOf(q)!==-1; }
+function openGlobalSearch(){
+  openModal('modalSearch');
+  var i = document.getElementById('searchInput');
+  if(i){ i.value=''; setTimeout(function(){ i.focus(); }, 30); }
+  renderGlobalSearch();
+}
+function renderGlobalSearch(){
+  var q = String(document.getElementById('searchInput').value||'').trim().toLowerCase();
+  var box = document.getElementById('searchResults');
+  if(!q || q.length<2){ box.innerHTML = '<p class="hint">Scrivi almeno 2 caratteri.</p>'; return; }
+
+  var ric = cache.ricevute.filter(function(r){ return containsQuery(r.numero,q) || containsQuery(r.nome,q) || containsQuery(r.note,q); }).slice(0,20);
+  var ana = cache.anagrafiche.filter(function(a){ return containsQuery(a.nome,q) || containsQuery(a.telefono,q); }).slice(0,15);
+  var cas = cache.casse.filter(function(c){ return containsQuery(c.nome,q) || containsQuery(c.nome_en,q); }).slice(0,12);
+  var ben = cache.beni.filter(function(b){ return containsQuery(b.descrizione,q) || containsQuery(b.categoria,q) || containsQuery(b.note,q); }).slice(0,12);
+  var gui = HELP_TOPICS.filter(function(h){ return containsQuery(h.title,q) || containsQuery(h.text,q); }).slice(0,8);
+
+  function row(action, title, sub){
+    return '<button class="btn" style="width:100%;justify-content:flex-start;margin:4px 0" data-search-action="'+esc(action)+'"><span style="font-weight:600">'+esc(title||'')+'</span><span class="hint" style="margin-left:8px">'+esc(sub||'')+'</span></button>';
+  }
+  var html = [];
+  if(ric.length){ html.push('<h4>Ricevute</h4>'); ric.forEach(function(r){ html.push(row('ricevuta:'+r.id, (r.numero||'')+' · '+(r.nome||''), fmtDate(r.data||''))); }); }
+  if(ana.length){ html.push('<h4>Anagrafiche</h4>'); ana.forEach(function(a){ html.push(row('anag:'+a.id, a.nome||'', a.tipo||'')); }); }
+  if(cas.length){ html.push('<h4>Casse</h4>'); cas.forEach(function(c){ html.push(row('cassa:'+c.id, c.nome||'', (c.percentuale_cg||0)+'%')); }); }
+  if(ben.length){ html.push('<h4>Beni</h4>'); ben.forEach(function(b){ html.push(row('bene:'+b.id, b.descrizione||'', b.stato||'')); }); }
+  if(gui.length){ html.push('<h4>Guida</h4>'); gui.forEach(function(h){ html.push(row('help:'+h.section, h.title, h.text)); }); }
+  if(!html.length) html.push('<p class="hint">Nessun risultato.</p>');
+
+  box.innerHTML = html.join('');
+  box.querySelectorAll('[data-search-action]').forEach(function(el){
+    el.addEventListener('click', function(){
+      var a = String(el.getAttribute('data-search-action')||'');
+      if(a.indexOf('ricevuta:')===0){ closeModal('modalSearch'); goSection('ricevute'); apriRicevuta(a.slice(9)); return; }
+      if(a.indexOf('anag:')===0){ closeModal('modalSearch'); goSection('anagrafiche'); apriAnagrafica(a.slice(5)); return; }
+      if(a.indexOf('cassa:')===0){ closeModal('modalSearch'); goSection('casse'); apriCassa(a.slice(6)); return; }
+      if(a.indexOf('bene:')===0){ closeModal('modalSearch'); goSection('beni'); apriBene(a.slice(5)); return; }
+      if(a.indexOf('help:')===0){ closeModal('modalSearch'); goSection(a.slice(5)); }
+    });
+  });
+}
+
+/* ================= ARCHIVIO ================= */
+function renderArchivio(){
+  var annoSel = document.getElementById('archAnnoSelect');
+  var body = document.getElementById('archivioBody');
+  if(!annoSel || !body) return;
+  var anni = Array.from(new Set(cache.ricevute.map(function(r){ return Number(String(r.data||'').slice(0,4)); }).filter(Boolean))).sort(function(a,b){ return b-a; });
+  if(anni.length===0) anni = [new Date().getFullYear()];
+  annoSel.innerHTML = anni.map(function(y){ return '<option value="'+y+'">'+y+'</option>'; }).join('');
+  var rows = cache.archiviAnnuali || [];
+  body.innerHTML = rows.length===0 ? '<tr class="empty-row"><td colspan="5">Nessun anno archiviato.</td></tr>' : rows.map(function(a){
+    return '<tr><td>'+esc(String(a.anno||''))+'</td><td>'+(a.stato==='riaperto'?'Riaperto':'Chiuso')+'</td><td>'+(a.chiuso_il?fmtDate(String(a.chiuso_il).slice(0,10)):'—')+'</td><td>'+esc(a.note||'')+'</td><td><button class="btn btn-sm" data-arch-reopen="'+a.id+'"'+(canWrite?'':' disabled')+'>Riapri</button></td></tr>';
+  }).join('');
+  body.querySelectorAll('[data-arch-reopen]').forEach(function(b){
+    b.addEventListener('click', async function(){
+      if(!canWrite) return;
+      await sb.from('archivi_annuali').update({ stato:'riaperto' }).eq('id', b.getAttribute('data-arch-reopen'));
+      await loadAll();
+      showToast('Anno riaperto');
+    });
+  });
 }
 
 function getDestinazioneLabels(){
@@ -1678,6 +1895,52 @@ function bindRicevutaRowActions(container){
   });
 }
 
+function getFilteredRicevute(){
+  var tipo = document.getElementById('filtTipo').value, cassaId = document.getElementById('filtCassa').value;
+  var dal = document.getElementById('filtDal').value, al = document.getElementById('filtAl').value;
+  return cache.ricevute.filter(function(r){
+    if(tipo && r.tipo!==tipo) return false;
+    if(cassaId && !ricevutaHasCassa(r, cassaId)) return false;
+    if(dal && r.data<dal) return false;
+    if(al && r.data>al) return false;
+    return true;
+  });
+}
+function buildRicevuteListPrintHtml(list){
+  var rows = list.map(function(r){
+    return '<tr><td>'+esc(r.numero||'')+'</td><td>'+fmtDate(r.data||'')+'</td><td>'+esc(r.tipo||'')+'</td><td>'+esc(r.nome||'')+'</td><td style="text-align:right">'+fmtEUR(r.totale||0)+'</td></tr>';
+  }).join('');
+  return '<!doctype html><html><head><meta charset="utf-8"><title>Elenco ricevute</title><style>body{font-family:Arial,sans-serif;margin:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px 8px}th{background:#f5f5f5;text-align:left}.tot{margin-top:10px;font-weight:700;text-align:right}@media print{button{display:none}}</style></head><body>'+
+    '<h2>Elenco ricevute</h2><table><thead><tr><th>Numero</th><th>Data</th><th>Tipo</th><th>Nome</th><th style="text-align:right">Importo</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+    '<div class="tot">Totale elementi: '+list.length+'</div><button onclick="window.print()">Stampa</button></body></html>';
+}
+function stampaElencoRicevute(){
+  var list = getFilteredRicevute();
+  if(!list.length){ showToast('Nessuna ricevuta da stampare.'); return; }
+  var w = window.open('', '_blank');
+  if(!w){ showToast('Popup bloccato dal browser.'); return; }
+  w.document.open();
+  w.document.write(buildRicevuteListPrintHtml(list));
+  w.document.close();
+}
+async function condividiElencoRicevute(){
+  var list = getFilteredRicevute();
+  if(!list.length){ showToast('Nessuna ricevuta da condividere.'); return; }
+  var lines = ['Numero;Data;Tipo;Nome;Importo'];
+  list.forEach(function(r){ lines.push([r.numero, fmtDate(r.data), r.tipo, r.nome, Number(r.totale||0).toFixed(2)].join(';')); });
+  var text = lines.join('\n');
+  if(navigator.share){
+    try{ await navigator.share({ title:'Elenco ricevute', text:text }); return; }catch(_e){}
+  }
+  saveFile('elenco-ricevute-'+todayISO()+'.csv', text, 'text/csv;charset=utf-8;');
+}
+var btnRicevuteStampa = document.getElementById('btnRicevuteStampa');
+if(btnRicevuteStampa) btnRicevuteStampa.addEventListener('click', stampaElencoRicevute);
+var btnRicevutePdf = document.getElementById('btnRicevutePdf');
+if(btnRicevutePdf) btnRicevutePdf.addEventListener('click', stampaElencoRicevute);
+var btnRicevuteCondividi = document.getElementById('btnRicevuteCondividi');
+if(btnRicevuteCondividi) btnRicevuteCondividi.addEventListener('click', condividiElencoRicevute);
+
 ['filtEntrateCassa','filtEntrateDal','filtEntrateAl','filtEntrateNome'].forEach(function(id){ var el=document.getElementById(id); if(el){ el.addEventListener('input', renderEntrate); el.addEventListener('change', renderEntrate); } });
 ['filtUsciteCassa','filtUsciteDal','filtUsciteAl','filtUsciteNome'].forEach(function(id){ var el=document.getElementById(id); if(el){ el.addEventListener('input', renderUscite); el.addEventListener('change', renderUscite); } });
 document.getElementById('btnNuovaEntrataSezione').addEventListener('click', function(){ apriModaleRicevuta('entrata', null); });
@@ -1750,6 +2013,22 @@ function clearRicevutaOnClose(){
   document.getElementById('rNomeLabel').textContent = 'Contribuente';
   document.getElementById('btnEliminaRicevuta').style.display = 'none';
   document.getElementById('btnStampaRicevuta').style.display = 'none';
+}
+
+var btnScattaFoto = document.getElementById('btnScattaFoto');
+var allegatiCameraInput = document.getElementById('rAllegatiCamera');
+if(btnScattaFoto && allegatiCameraInput){
+  btnScattaFoto.addEventListener('click', function(){ allegatiCameraInput.click(); });
+  allegatiCameraInput.addEventListener('change', function(){
+    if(!allegatiCameraInput.files || !allegatiCameraInput.files.length) return;
+    var mainInput = document.getElementById('rAllegati');
+    var dt = new DataTransfer();
+    Array.from(mainInput.files||[]).forEach(function(f){ dt.items.add(f); });
+    Array.from(allegatiCameraInput.files||[]).forEach(function(f){ dt.items.add(f); });
+    mainInput.files = dt.files;
+    allegatiCameraInput.value='';
+    showToast('Foto aggiunta agli allegati');
+  });
 }
 
 var modalRicevutaEl = document.getElementById('modalRicevuta');
@@ -2555,6 +2834,8 @@ function renderImpostazioni(){
   document.getElementById('setTesoriere').value = c.tesoriere||'';
   document.getElementById('setZeri').value = String(c.zeri_numerazione||3);
   loadBrandingAssets();
+  applyUiSettings();
+  readLockSettings();
 }
 document.getElementById('btnSalvaImpostazioni').addEventListener('click', async function(){
   if(!canWrite){ showToast('Sola lettura'); return; }
@@ -2580,12 +2861,64 @@ document.getElementById('btnSalvaImpostazioni').addEventListener('click', async 
     brandingAssets.timbro = await fileToDataUrl(timbroFile);
     try{ localStorage.setItem(churchScopedKey(STAMP_KEY_PREFIX), brandingAssets.timbro); }catch(_e2){}
   }
+
+  uiSettings = {
+    lang: document.getElementById('setUiLang').value || 'it-IT',
+    currency: document.getElementById('setUiCurrency').value || 'EUR'
+  };
+  saveScopedJson(UI_SETTINGS_KEY_PREFIX, uiSettings);
+  applyUiSettings();
   document.getElementById('setFirmaFile').value='';
   document.getElementById('setTimbroFile').value='';
   setImagePreview(document.getElementById('setFirmaPreview'), document.getElementById('btnRimuoviFirma'), brandingAssets.firma);
   setImagePreview(document.getElementById('setTimbroPreview'), document.getElementById('btnRimuoviTimbro'), brandingAssets.timbro);
   showToast('Impostazioni salvate');
 });
+
+document.getElementById('btnSalvaLock').addEventListener('click', function(){
+  var enabled = !!document.getElementById('setLockEnabled').checked;
+  var pin = String(document.getElementById('setLockPin').value||'').trim();
+  var timeoutMin = Number(document.getElementById('setLockTimeoutMin').value||0);
+  if(enabled && !lockSettings.hash && pin.length<4){ showToast('Inserisci un PIN di almeno 4 cifre.'); return; }
+  if(pin && pin.length<4){ showToast('Il PIN deve avere almeno 4 cifre.'); return; }
+  lockSettings.enabled = enabled;
+  if(pin) lockSettings.hash = hashPin(pin);
+  lockSettings.timeoutMin = timeoutMin;
+  saveScopedJson(LOCK_SETTINGS_KEY_PREFIX, lockSettings);
+  document.getElementById('setLockPin').value='';
+  scheduleLockTimer();
+  showToast('Blocco aggiornato');
+});
+
+document.getElementById('btnUnlock').addEventListener('click', function(){
+  var pin = String(document.getElementById('lockPinInput').value||'');
+  var err = document.getElementById('lockErr');
+  if(hashPin(pin)===String(lockSettings.hash||'')){
+    lockScreenClose();
+    touchActivity();
+    if(err) err.textContent = '';
+    return;
+  }
+  if(err) err.textContent = 'PIN non valido';
+});
+document.getElementById('lockPinInput').addEventListener('keydown', function(e){
+  if(e.key==='Enter') document.getElementById('btnUnlock').click();
+});
+
+var btnArchiviaAnno = document.getElementById('btnArchiviaAnno');
+if(btnArchiviaAnno){
+  btnArchiviaAnno.addEventListener('click', async function(){
+    if(!canWrite){ showToast('Sola lettura'); return; }
+    var y = Number(document.getElementById('archAnnoSelect').value||0);
+    if(!y){ showToast('Anno non valido'); return; }
+    var note = 'Archiviato da interfaccia';
+    var payload = { chiesa_id:activeChiesa.id, anno:y, stato:'chiuso', chiuso_il:new Date().toISOString(), note:note };
+    var { error } = await sb.from('archivi_annuali').upsert(payload, { onConflict:'chiesa_id,anno' });
+    if(error){ showToast('Errore archivio: '+(error.message||'')); return; }
+    await loadAll();
+    showToast('Anno '+y+' archiviato');
+  });
+}
 document.getElementById('btnRimuoviFirma').addEventListener('click', function(){
   brandingAssets.firma = null;
   try{ localStorage.removeItem(churchScopedKey(SIGNATURE_KEY_PREFIX)); }catch(_e){}
