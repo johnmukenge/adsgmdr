@@ -2598,6 +2598,21 @@ function getPercentualiEffettive(dest, refDateISO){
   filtered.forEach(function(p){ if(perCassa[p.cassa_id]==null) perCassa[p.cassa_id] = Number(p.percentuale)||0; });
   return perCassa;
 }
+function normalizeReportText(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); }
+function isInternalCasseMovement(r){
+  if(!r) return false;
+  var note = normalizeReportText(r.note);
+  var nome = normalizeReportText(r.nome);
+  var text = note + ' ' + nome;
+  if(/\[(movimento[_\s-]*casse|giroconto|trasferimento[_\s-]*casse)\]/.test(text)) return true;
+  if(/giroconto|trasferiment|movimento\s+.*cass|cassa\s*[-=]>|da\s+cassa|a\s+cassa/.test(text)) return true;
+
+  var cassaNames = {};
+  cache.casse.forEach(function(c){ cassaNames[normalizeReportText(c.nome)] = true; });
+  var nomeIsCassa = !!cassaNames[nome];
+  if(nomeIsCassa && /spostament|trasferiment|giroconto|movimento/.test(note)) return true;
+  return false;
+}
 function computeReportData(){
   var dal = document.getElementById('repDal').value;
   var al = document.getElementById('repAl').value;
@@ -2605,8 +2620,19 @@ function computeReportData(){
   var mapPerc = getPercentualiEffettive(destinazione, al||todayISO());
   var hasMap = Object.keys(mapPerc).length>0;
   var casseScope = cache.casse;
+  var ricevutePeriodo = cache.ricevute.filter(function(r){ return (!dal || r.data>=dal) && (!al || r.data<=al); });
+  var ricevuteUsabili = ricevutePeriodo.filter(function(r){ return !isInternalCasseMovement(r); });
+  var esclusi = ricevutePeriodo.length - ricevuteUsabili.length;
   var righe = casseScope.map(function(c){
-    var tot = totaliCassaPeriodo(c.id, dal, al);
+    var entrate = 0, uscite = 0;
+    ricevuteUsabili.forEach(function(r){
+      getRigheMovimento(r).forEach(function(x){
+        if(x.cassa_id!==c.id) return;
+        var eff = effettoRiga(r, x);
+        if(eff>=0) entrate += Math.abs(eff); else uscite += Math.abs(eff);
+      });
+    });
+    var tot = { entrate:entrate, uscite:uscite, netto:entrate-uscite };
     var entrate = tot.entrate;
     var uscite = tot.uscite;
     var netto = tot.netto;
@@ -2616,7 +2642,7 @@ function computeReportData(){
     var quota = entrate * perc / 100;
     return { cassa_id:c.id, nome:c.nome, entrate:entrate, uscite:uscite, netto:netto, perc:perc, quota:quota };
   });
-  return { dal:dal, al:al, destinazione:destinazione, righe:righe };
+  return { dal:dal, al:al, destinazione:destinazione, righe:righe, esclusiMovimentiInterni:esclusi };
 }
 var lastReportData = null;
 function validateReportFilter(){
@@ -2635,7 +2661,9 @@ function renderReport(){
   var destLabel = data.destinazione==='cg' ? 'CG' : 'Campo';
   document.getElementById('reportPercHead').textContent = '% '+destLabel;
   document.getElementById('reportQuotaHead').textContent = 'Quota '+destLabel;
-  document.getElementById('reportHint').textContent = 'La quota '+destLabel+' è calcolata sulle entrate del periodo selezionato (non sul netto).';
+  var hint = 'La quota '+destLabel+' è calcolata sulle entrate del periodo selezionato (non sul netto).';
+  if(Number(data.esclusiMovimentiInterni||0)>0) hint += ' Esclusi '+data.esclusiMovimentiInterni+' movimenti inter-cassa per evitare dati falsati.';
+  document.getElementById('reportHint').textContent = hint;
   var body = document.getElementById('reportBody');
   var pg = paginateArray('report', data.righe);
   if(pg.total===0){
