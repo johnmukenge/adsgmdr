@@ -1958,11 +1958,17 @@ function populateCassaSelects(){
 }
 function populateDepositoSelect(){ document.getElementById('rDeposito').innerHTML = '<option value="">—</option>' + cache.depositi.map(function(d){ return '<option value="'+d.id+'">'+esc(d.nome)+'</option>'; }).join(''); }
 function populateAnagraficheDatalist(){ document.getElementById('anagraficheList').innerHTML = cache.anagrafiche.map(function(a){ return '<option value="'+esc(a.nome)+'">'; }).join(''); }
+function canViewRicevutaReadonly(){
+  if(canWrite) return true;
+  if(hasRole('presidente_campo_ro')) return true;
+  return profileRoles.some(function(r){ return String(r||'').indexOf('revisore')===0; });
+}
 function ricevutaActionsHtml(id){
   if(canWrite){
     return '<button class="btn btn-sm" data-print-ricevuta="'+id+'">Stampa</button><button class="btn btn-sm" data-open-ricevuta="'+id+'">Modifica</button><button class="btn btn-sm btn-danger btn-ghost" data-del-ricevuta="'+id+'">Cancella</button>';
   }
-  return '<button class="btn btn-sm" disabled>Stampa</button><button class="btn btn-sm" disabled>Modifica</button>';
+  if(canViewRicevutaReadonly()) return '<button class="btn btn-sm" disabled>Stampa</button><button class="btn btn-sm" data-open-ricevuta="'+id+'">Apri</button>';
+  return '<button class="btn btn-sm" disabled>Stampa</button><button class="btn btn-sm" disabled>Apri</button>';
 }
 
 function renderRicevute(){
@@ -2050,7 +2056,10 @@ function bindRicevutaRowActions(container){
     b.addEventListener('click', function(){ stampaRicevutaById(b.getAttribute('data-print-ricevuta')); });
   });
   container.querySelectorAll('[data-open-ricevuta]').forEach(function(b){
-    b.addEventListener('click', function(){ apriRicevuta(b.getAttribute('data-open-ricevuta')); });
+    b.addEventListener('click', function(){
+      if(!canWrite && !canViewRicevutaReadonly()){ showToast('Non autorizzato ad aprire la ricevuta.'); return; }
+      apriRicevuta(b.getAttribute('data-open-ricevuta'));
+    });
   });
   container.querySelectorAll('[data-del-ricevuta]').forEach(function(b){
     b.addEventListener('click', async function(){
@@ -2144,6 +2153,26 @@ function addRigaRow(desc, importo, cassaId, tipoRiga, forceBlank){
   div.querySelector('.riga-importo').addEventListener('input', ricalcolaTotale);
   div.querySelector('.riga-tipo').addEventListener('change', ricalcolaTotale);
 }
+function setRicevutaReadOnly(readOnly){
+  var ro = !!readOnly;
+  ['rData','rNome','rDeposito','rAllegati','rAllegatiCamera','rNote'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.disabled = ro;
+  });
+  var btnAdd = document.getElementById('btnAggiungiRiga');
+  if(btnAdd){
+    btnAdd.disabled = ro;
+    btnAdd.style.display = ro ? 'none' : 'inline-flex';
+  }
+  var btnFoto = document.getElementById('btnScattaFoto');
+  if(btnFoto){
+    btnFoto.disabled = ro;
+    btnFoto.style.display = ro ? 'none' : 'inline-flex';
+  }
+  var btnConf = document.getElementById('btnConfermaRicevuta');
+  if(btnConf) btnConf.style.display = ro ? 'none' : 'inline-flex';
+  document.querySelectorAll('#righeList .riga input, #righeList .riga select, #righeList .riga button.del').forEach(function(el){ el.disabled = ro; });
+}
 function ricalcolaTotale(){
   var tipoHeader = (document.getElementById('ricevutaTipo').value||'entrata');
   var t=0;
@@ -2169,6 +2198,7 @@ function resetFormRicevuta(tipo){
   document.getElementById('rAllegati').value = '';
   document.getElementById('righeList').innerHTML='';
   addRigaRow('', '', '', tipo || 'entrata', true);
+  setRicevutaReadOnly(false);
   ricalcolaTotale();
 }
 
@@ -2204,9 +2234,12 @@ modalRicevutaEl.addEventListener('click', function(e){ if(e.target===modalRicevu
 modalRicevutaEl.querySelectorAll('[data-close]').forEach(function(b){ b.addEventListener('click', clearRicevutaOnClose); });
 
 function apriModaleRicevuta(tipo, existing){
+  if(!existing && !canWrite){ showToast('Sola lettura: puoi solo consultare le ricevute esistenti.'); return; }
+  if(existing && !canWrite && !canViewRicevutaReadonly()){ showToast('Non autorizzato ad aprire questa ricevuta.'); return; }
   resetFormRicevuta(tipo);
+  var readOnlyView = !!(existing && !canWrite);
   document.getElementById('ricevutaTipo').value = tipo;
-  document.getElementById('ricevutaTitolo').textContent = existing ? ('Ricevuta '+existing.numero) : (tipo==='entrata'?'Nuova entrata':'Nuova uscita');
+  document.getElementById('ricevutaTitolo').textContent = existing ? ('Ricevuta '+existing.numero+(readOnlyView?' · sola lettura':'')) : (tipo==='entrata'?'Nuova entrata':'Nuova uscita');
   document.getElementById('rNomeLabel').textContent = tipo==='entrata' ? 'Contribuente' : 'Fornitore';
   document.getElementById('btnEliminaRicevuta').style.display = (canWrite && existing) ? 'inline-flex' : 'none';
   document.getElementById('btnStampaRicevuta').style.display = (canWrite && existing) ? 'inline-flex' : 'none';
@@ -2227,6 +2260,7 @@ function apriModaleRicevuta(tipo, existing){
     });
   }
   ricalcolaTotale();
+  setRicevutaReadOnly(readOnlyView);
   openModal('modalRicevuta');
 }
 
