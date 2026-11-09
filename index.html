@@ -535,6 +535,7 @@
             <h3>Ruoli utente e permessi</h3>
             <ul>
               <li><strong>Admin:</strong> pieno controllo e gestione trasversale.</li>
+              <li><strong>Tesoriere campo:</strong> lettura + scrittura nella propria area.</li>
               <li><strong>Tesoriere chiesa:</strong> scrittura solo sulla propria chiesa/organizzazione (mai su conto campo o altre chiese).</li>
               <li><strong>Tesoriere chiesa, Presidente, Revisore, Lettore 1, Lettore 2:</strong> sola lettura, nomi e descrizioni visibili.</li>
               <li>Se vedi il badge <strong>Sola lettura</strong>, non puoi modificare/stampare.</li>
@@ -1337,7 +1338,7 @@ function isCampoRead(){
   return hasRole('tesoriere_campo') || hasRole('presidente_campo_ro') || hasRole('revisore_ro') || hasRole('lettore_1_ro') || hasRole('lettore_2_ro');
 }
 function isCampo(){ return hasRole('tesoriere_campo'); }
-function isAdminOnly(){ return hasRole('admin') && !isCampo(); }
+function isAdminOnly(){ return hasRole('admin'); }
 function isCampoChiesaRecord(chiesa){
   if(!chiesa) return false;
   if(chiesa.is_campo===true) return true;
@@ -1385,7 +1386,10 @@ async function setActiveChiesa(chiesaId){
   var { data: chiesa } = await sb.from('chiese').select('*').eq('id', chiesaId).single();
   activeChiesa = chiesa;
   var isOwnChiesa = String(profile && profile.chiesa_id || '')===String(chiesaId||'');
-  canWrite = isAdminOnly() || (hasRole('tesoriere_chiesa') && isOwnChiesa && !isCampoChiesaRecord(chiesa));
+  canWrite =
+    isAdminOnly() ||
+    (isCampo() && isOwnChiesa) ||
+    (hasRole('tesoriere_chiesa') && isOwnChiesa && !isCampoChiesaRecord(chiesa));
   uiSettings = Object.assign({ lang:'it-IT', currency:'EUR' }, readScopedJson(UI_SETTINGS_KEY_PREFIX, { lang:'it-IT', currency:'EUR' }));
   applyUiSettings();
   readLockSettings();
