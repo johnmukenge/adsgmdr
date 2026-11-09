@@ -1426,12 +1426,24 @@ async function setActiveChiesa(chiesaId){
 /* ================= CARICAMENTO DATI ================= */
 async function loadAll(){
   var cid = activeChiesa.id;
+  function shouldUseSecureListRpc(){
+    var rawRole = String((profile && profile.ruolo) || '').toLowerCase();
+    return /lettore.*anon/.test(rawRole);
+  }
   try{
+    var useSecureRpc = shouldUseSecureListRpc();
+    var ricevuteQuery = useSecureRpc
+      ? sb.rpc('lista_ricevute_sicure', { p_chiesa_id: cid })
+      : sb.from('ricevute').select('*, righe_ricevuta(*)').eq('chiesa_id', cid).order('data', {ascending:false});
+    var anagraficheQuery = useSecureRpc
+      ? sb.rpc('lista_anagrafiche_sicure', { p_chiesa_id: cid })
+      : sb.from('anagrafiche').select('*').eq('chiesa_id', cid).order('nome');
+
     var [c1,c2,c3,c4,c5] = await Promise.all([
       sb.from('casse').select('*').eq('chiesa_id', cid).order('nome'),
       sb.from('depositi').select('*').eq('chiesa_id', cid).order('nome'),
-      sb.rpc('lista_ricevute_sicure', { p_chiesa_id: cid }),
-      sb.rpc('lista_anagrafiche_sicure', { p_chiesa_id: cid }),
+      ricevuteQuery,
+      anagraficheQuery,
       sb.from('beni').select('*').eq('chiesa_id', cid).order('creato_il', {ascending:false})
     ]);
     cache.casse = c1.data || [];
@@ -1445,13 +1457,19 @@ async function loadAll(){
 
     if(c3 && c3.error){
       try{
-        var c3fb = await sb.from('ricevute').select('*, righe_ricevuta(*)').eq('chiesa_id', cid).order('data', {ascending:false});
+        var c3fb = await sb.rpc('lista_ricevute_sicure', { p_chiesa_id: cid });
+        if(c3fb && c3fb.error){
+          c3fb = await sb.from('ricevute').select('*, righe_ricevuta(*)').eq('chiesa_id', cid).order('data', {ascending:false});
+        }
         cache.ricevute = c3fb.data || cache.ricevute;
       }catch(_e1){}
     }
     if(c4 && c4.error){
       try{
-        var c4fb = await sb.from('anagrafiche').select('*').eq('chiesa_id', cid).order('nome');
+        var c4fb = await sb.rpc('lista_anagrafiche_sicure', { p_chiesa_id: cid });
+        if(c4fb && c4fb.error){
+          c4fb = await sb.from('anagrafiche').select('*').eq('chiesa_id', cid).order('nome');
+        }
         cache.anagrafiche = c4fb.data || cache.anagrafiche;
       }catch(_e2){}
     }
