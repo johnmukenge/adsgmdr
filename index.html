@@ -2734,16 +2734,27 @@ function getPercentualiEffettive(dest, refDateISO){
 function normalizeReportText(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); }
 function isInternalCasseMovement(r){
   if(!r) return false;
+  var rows = getRigheMovimento(r).filter(function(x){ return !!x.cassa_id && Number(x.importo||0)!==0; });
+  if(rows.length>=2){
+    var posByCassa = {};
+    var negByCassa = {};
+    rows.forEach(function(x){
+      var eff = effettoRiga(r, x);
+      if(eff>0) posByCassa[x.cassa_id] = true;
+      else if(eff<0) negByCassa[x.cassa_id] = true;
+    });
+    var posIds = Object.keys(posByCassa);
+    var negIds = Object.keys(negByCassa);
+    if(posIds.length && negIds.length){
+      var cross = posIds.some(function(pid){ return negByCassa[pid]!==true; }) || negIds.some(function(nid){ return posByCassa[nid]!==true; });
+      if(cross) return true;
+    }
+  }
+
   var note = normalizeReportText(r.note);
   var nome = normalizeReportText(r.nome);
   var text = note + ' ' + nome;
-  if(/\[(movimento[_\s-]*casse|giroconto|trasferimento[_\s-]*casse)\]/.test(text)) return true;
-  if(/giroconto|trasferiment|movimento\s+.*cass|cassa\s*[-=]>|da\s+cassa|a\s+cassa/.test(text)) return true;
-
-  var cassaNames = {};
-  cache.casse.forEach(function(c){ cassaNames[normalizeReportText(c.nome)] = true; });
-  var nomeIsCassa = !!cassaNames[nome];
-  if(nomeIsCassa && /spostament|trasferiment|giroconto|movimento/.test(note)) return true;
+  if(/\[(movimento[_\s-]*casse|giroconto|trasferimento[_\s-]*casse|inter[_\s-]*cassa)\]/.test(text)) return true;
   return false;
 }
 function computeReportData(){
