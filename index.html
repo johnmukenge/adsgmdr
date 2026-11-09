@@ -343,7 +343,10 @@
           <div class="filters">
             <select id="filtTipo"><option value="">Tutte</option><option value="entrata">Entrate</option><option value="uscita">Uscite</option></select>
             <select id="filtCassa"><option value="">Tutte le casse</option></select>
-            <input type="date" id="filtDal"><input type="date" id="filtAl">
+            <label class="hint" style="display:flex;align-items:center;gap:6px;">Da <input type="date" id="filtDal"></label>
+            <label class="hint" style="display:flex;align-items:center;gap:6px;">Al <input type="date" id="filtAl"></label>
+            <input type="text" id="filtNome" placeholder="Nominativo">
+            <input type="text" id="filtDescrizione" placeholder="Descrizione (like)">
           </div>
           <div class="table-wrap"><table><thead><tr><th>Numero</th><th>Data</th><th>Tipo</th><th>Nome</th><th>Cassa</th><th>Deposito</th><th style="text-align:right">Importo</th><th></th></tr></thead><tbody id="ricevuteBody"></tbody></table></div>
         </div></div>
@@ -532,9 +535,8 @@
             <h3>Ruoli utente e permessi</h3>
             <ul>
               <li><strong>Admin:</strong> pieno controllo e gestione trasversale.</li>
-              <li><strong>Tesoriere campo/chiesa:</strong> lettura + scrittura nella propria area.</li>
-              <li><strong>Presidente (RO):</strong> sola lettura, nomi visibili.</li>
-              <li><strong>Lettore anon (RO):</strong> sola lettura con nomi mascherati.</li>
+              <li><strong>Tesoriere chiesa:</strong> scrittura solo sulla propria chiesa/organizzazione (mai su conto campo o altre chiese).</li>
+              <li><strong>Tesoriere chiesa, Presidente, Revisore, Lettore 1, Lettore 2:</strong> sola lettura, nomi e descrizioni visibili.</li>
               <li>Se vedi il badge <strong>Sola lettura</strong>, non puoi modificare/stampare.</li>
             </ul>
           </div>
@@ -1315,8 +1317,12 @@ function normalizeRuolo(ruoloRaw){
   if(r==='tesorierechiesa') return 'tesoriere_chiesa';
   if(r==='presidente') return 'presidente_campo_ro';
   if(r==='presidente_campo') return 'presidente_campo_ro';
-  if(r==='lettore_anon') return 'lettore_campo_ro_anon';
-  if(r==='lettore_campo_anon') return 'lettore_campo_ro_anon';
+  if(r==='revisore' || r==='revisore_campo' || r==='revisore_chiesa') return 'revisore_ro';
+  if(r==='lettore1' || r==='lettore_1' || r==='lettore_i') return 'lettore_1_ro';
+  if(r==='lettore2' || r==='lettore_2' || r==='lettore_ii') return 'lettore_2_ro';
+  if(r==='lettore_campo_ro_anon') return 'lettore_1_ro';
+  if(r==='lettore_anon') return 'lettore_1_ro';
+  if(r==='lettore_campo_anon') return 'lettore_1_ro';
   return r;
 }
 function parseRuoli(ruoloRaw){
@@ -1327,9 +1333,19 @@ function parseRuoli(ruoloRaw){
   return Array.from(new Set(parts));
 }
 function hasRole(role){ return profileRoles.indexOf(role)!==-1; }
-function isCampoRead(){ return hasRole('tesoriere_campo') || hasRole('presidente_campo_ro') || hasRole('lettore_campo_ro_anon'); }
+function isCampoRead(){
+  return hasRole('tesoriere_campo') || hasRole('presidente_campo_ro') || hasRole('revisore_ro') || hasRole('lettore_1_ro') || hasRole('lettore_2_ro');
+}
 function isCampo(){ return hasRole('tesoriere_campo'); }
 function isAdminOnly(){ return hasRole('admin') && !isCampo(); }
+function isCampoChiesaRecord(chiesa){
+  if(!chiesa) return false;
+  if(chiesa.is_campo===true) return true;
+  var tipo = String(chiesa.tipo||chiesa.livello||'').toLowerCase().trim();
+  if(tipo==='campo') return true;
+  var txt = (String(chiesa.nome||'')+' '+String(chiesa.denominazione||'')+' '+String(chiesa.codice||'')).toLowerCase();
+  return /\bcampo\b|conferenza\s+generale/.test(txt);
+}
 
 async function afterLogin(){
   var { data:{ user } } = await sb.auth.getUser();
@@ -1369,7 +1385,7 @@ async function setActiveChiesa(chiesaId){
   var { data: chiesa } = await sb.from('chiese').select('*').eq('id', chiesaId).single();
   activeChiesa = chiesa;
   var isOwnChiesa = String(profile && profile.chiesa_id || '')===String(chiesaId||'');
-  canWrite = isAdminOnly() || (hasRole('tesoriere_chiesa') && isOwnChiesa) || (isCampo() && isOwnChiesa);
+  canWrite = isAdminOnly() || (hasRole('tesoriere_chiesa') && isOwnChiesa && !isCampoChiesaRecord(chiesa));
   uiSettings = Object.assign({ lang:'it-IT', currency:'EUR' }, readScopedJson(UI_SETTINGS_KEY_PREFIX, { lang:'it-IT', currency:'EUR' }));
   applyUiSettings();
   readLockSettings();
@@ -1961,7 +1977,7 @@ function populateAnagraficheDatalist(){ document.getElementById('anagraficheList
 function canViewRicevutaReadonly(){
   if(canWrite) return true;
   if(hasRole('presidente_campo_ro')) return true;
-  return profileRoles.some(function(r){ return String(r||'').indexOf('revisore')===0; });
+  return hasRole('revisore_ro') || hasRole('lettore_1_ro') || hasRole('lettore_2_ro') || hasRole('lettore_campo_ro_anon') || hasRole('tesoriere_chiesa');
 }
 function ricevutaActionsHtml(id){
   if(canWrite){
@@ -1974,11 +1990,18 @@ function ricevutaActionsHtml(id){
 function renderRicevute(){
   var tipo = document.getElementById('filtTipo').value, cassaId = document.getElementById('filtCassa').value;
   var dal = document.getElementById('filtDal').value, al = document.getElementById('filtAl').value;
+  var qNome = document.getElementById('filtNome').value.trim().toLowerCase();
+  var qDesc = document.getElementById('filtDescrizione').value.trim().toLowerCase();
   var list = cache.ricevute.filter(function(r){
     if(tipo && r.tipo!==tipo) return false;
     if(cassaId && !ricevutaHasCassa(r, cassaId)) return false;
     if(dal && r.data<dal) return false;
     if(al && r.data>al) return false;
+    if(qNome && String(r.nome||'').toLowerCase().indexOf(qNome)===-1) return false;
+    if(qDesc){
+      var matchRiga = getRigheMovimento(r).some(function(x){ return String(x.descrizione||'').toLowerCase().indexOf(qDesc)!==-1; });
+      if(!matchRiga) return false;
+    }
     return true;
   });
   var pg = paginateArray('ricevute', list);
@@ -1996,7 +2019,7 @@ function renderRicevute(){
   bindRicevutaRowActions(body);
   renderTablePager(body, 'ricevute', pg.total, renderRicevute);
 }
-['filtTipo','filtCassa','filtDal','filtAl'].forEach(function(id){ document.getElementById(id).addEventListener('input', renderRicevute); document.getElementById(id).addEventListener('change', renderRicevute); });
+['filtTipo','filtCassa','filtDal','filtAl','filtNome','filtDescrizione'].forEach(function(id){ document.getElementById(id).addEventListener('input', renderRicevute); document.getElementById(id).addEventListener('change', renderRicevute); });
 
 function renderEntrate(){
   var cassaId = document.getElementById('filtEntrateCassa').value;
@@ -2072,11 +2095,18 @@ function bindRicevutaRowActions(container){
 function getFilteredRicevute(){
   var tipo = document.getElementById('filtTipo').value, cassaId = document.getElementById('filtCassa').value;
   var dal = document.getElementById('filtDal').value, al = document.getElementById('filtAl').value;
+  var qNome = document.getElementById('filtNome').value.trim().toLowerCase();
+  var qDesc = document.getElementById('filtDescrizione').value.trim().toLowerCase();
   return cache.ricevute.filter(function(r){
     if(tipo && r.tipo!==tipo) return false;
     if(cassaId && !ricevutaHasCassa(r, cassaId)) return false;
     if(dal && r.data<dal) return false;
     if(al && r.data>al) return false;
+    if(qNome && String(r.nome||'').toLowerCase().indexOf(qNome)===-1) return false;
+    if(qDesc){
+      var matchRiga = getRigheMovimento(r).some(function(x){ return String(x.descrizione||'').toLowerCase().indexOf(qDesc)!==-1; });
+      if(!matchRiga) return false;
+    }
     return true;
   });
 }
