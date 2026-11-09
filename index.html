@@ -1401,7 +1401,7 @@ async function setActiveChiesa(chiesaId){
   var isOwnChiesa = String(profile && profile.chiesa_id || '')===String(chiesaId||'');
   canWrite =
     isAdminOnly() ||
-    (isCampo() && isOwnChiesa) ||
+    isCampo() ||
     (hasRole('tesoriere_chiesa') && isOwnChiesa && !isCampoChiesaRecord(chiesa));
   uiSettings = Object.assign({ lang:'it-IT', currency:'EUR' }, readScopedJson(UI_SETTINGS_KEY_PREFIX, { lang:'it-IT', currency:'EUR' }));
   applyUiSettings();
